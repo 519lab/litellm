@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { usePlaygroundHistory } from "./hooks/usePlaygroundHistory";
 import { PlaygroundHistoryPanel } from "./components/PlaygroundHistoryPanel";
 import { SaveRunDialog } from "./components/SaveRunDialog";
+import { RunDetailDialog } from "./components/RunDetailDialog";
 import type { PlaygroundRun } from "./hooks/usePlaygroundHistory";
 
 interface ProxySettings {
@@ -26,7 +27,7 @@ export default function PlaygroundPage() {
   const [proxySettings, setProxySettings] = useState<ProxySettings | undefined>(undefined);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [saveOpen, setSaveOpen] = useState(false);
-  const [loadedRun, setLoadedRun] = useState<PlaygroundRun | undefined>(undefined);
+  const [detailRun, setDetailRun] = useState<PlaygroundRun | undefined>(undefined);
 
   const { runs, addRun, deleteRun, clearHistory } = usePlaygroundHistory();
 
@@ -46,8 +47,8 @@ export default function PlaygroundPage() {
     initializeProxySettings();
   }, [accessToken]);
 
-  function handleLoadRun(run: PlaygroundRun) {
-    setLoadedRun(run);
+  function handleViewRun(run: PlaygroundRun) {
+    setDetailRun(run);
     setHistoryOpen(false);
   }
 
@@ -120,7 +121,7 @@ export default function PlaygroundPage() {
 
       <PlaygroundHistoryPanel
         runs={runs}
-        onLoad={handleLoadRun}
+        onView={handleViewRun}
         onDelete={deleteRun}
         onClear={clearHistory}
         isOpen={historyOpen}
@@ -133,11 +134,10 @@ export default function PlaygroundPage() {
         onSave={addRun}
       />
 
-      {loadedRun && (
-        <div className="sr-only" aria-live="polite">
-          Loaded run: {loadedRun.label ?? loadedRun.model}
-        </div>
-      )}
+      <RunDetailDialog
+        run={detailRun}
+        onClose={() => setDetailRun(undefined)}
+      />
     </div>
   );
 }

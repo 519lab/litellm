@@ -26,7 +26,7 @@ import type { PlaygroundRun } from "../hooks/usePlaygroundHistory";
 
 interface PlaygroundHistoryPanelProps {
   runs: PlaygroundRun[];
-  onLoad: (run: PlaygroundRun) => void;
+  onView: (run: PlaygroundRun) => void;
   onDelete: (id: string) => void;
   onClear: () => void;
   isOpen: boolean;
@@ -48,7 +48,7 @@ function tokenSummary(run: PlaygroundRun): string {
 
 export function PlaygroundHistoryPanel({
   runs,
-  onLoad,
+  onView,
   onDelete,
   onClear,
   isOpen,
@@ -94,14 +94,12 @@ export function PlaygroundHistoryPanel({
           <ScrollArea className="flex-1 h-0">
             <div className="flex flex-col gap-1 p-2">
               {runs.map((run) => (
-                <div
+                <button
                   key={run.id}
-                  className="group relative flex flex-col gap-1 rounded-md border border-border bg-card p-3 cursor-pointer hover:bg-muted/50 transition-colors"
-                  onClick={() => onLoad(run)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onLoad(run); }}
-                  aria-label={`Load run: ${run.label ?? run.model}`}
+                  type="button"
+                  className="group relative flex flex-col gap-1 rounded-md border border-border bg-card p-3 text-left hover:bg-muted/50 transition-colors w-full"
+                  onClick={() => onView(run)}
+                  aria-label={`View run: ${run.label ?? run.model}`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex flex-col gap-1 min-w-0">
@@ -116,7 +114,7 @@ export function PlaygroundHistoryPanel({
                       variant="ghost"
                       size="icon-sm"
                       className="opacity-0 group-hover:opacity-100 shrink-0 -mt-1 -mr-1"
-                      aria-label="Delete run"
+                      aria-label={`Delete run: ${run.label ?? run.model}`}
                       onClick={(e) => {
                         e.stopPropagation();
                         onDelete(run.id);
@@ -139,7 +137,7 @@ export function PlaygroundHistoryPanel({
                       {run.response.slice(0, 120)}
                     </p>
                   )}
-                </div>
+                </button>
               ))}
             </div>
           </ScrollArea>
