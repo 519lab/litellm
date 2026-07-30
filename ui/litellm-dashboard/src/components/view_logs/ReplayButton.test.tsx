@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { normalizeMessages } from "./ReplayButton";
+import { readAndClearReplay } from "@/app/(dashboard)/playground/page";
 import type { LogEntry } from "./columns";
 
 describe("normalizeMessages", () => {
@@ -55,16 +56,15 @@ describe("normalizeMessages", () => {
   });
 });
 
-describe("readAndClearReplay via sessionStorage", () => {
+describe("readAndClearReplay", () => {
   beforeEach(() => sessionStorage.clear());
   afterEach(() => sessionStorage.clear());
 
-  it("returns null when key is absent", async () => {
-    const { default: PlaygroundPage } = await import("@/app/(dashboard)/playground/page.tsx");
-    expect(sessionStorage.getItem("playground_replay")).toBeNull();
+  it("returns null when key is absent", () => {
+    expect(readAndClearReplay()).toBeNull();
   });
 
-  it("removes key and writes chatHistory on valid payload", () => {
+  it("returns the payload and removes the key", () => {
     const payload = {
       model: "test-model",
       messages: [{ role: "user", content: "hello" }],
@@ -72,22 +72,52 @@ describe("readAndClearReplay via sessionStorage", () => {
     };
     sessionStorage.setItem("playground_replay", JSON.stringify(payload));
 
-    const raw = sessionStorage.getItem("playground_replay");
-    expect(raw).not.toBeNull();
-    sessionStorage.removeItem("playground_replay");
+    const result = readAndClearReplay();
 
-    const data = JSON.parse(raw!);
-    expect(typeof data.model).toBe("string");
-    expect(Array.isArray(data.messages)).toBe(true);
-    sessionStorage.setItem("chatHistory", JSON.stringify(data.messages));
+    expect(result).not.toBeNull();
+    expect(result!.model).toBe("test-model");
+    expect(result!.messages).toHaveLength(1);
+    expect(result!.request_id).toBe("req-1");
     expect(sessionStorage.getItem("playground_replay")).toBeNull();
-    expect(JSON.parse(sessionStorage.getItem("chatHistory")!)).toHaveLength(1);
   });
 
-  it("rejects payload with non-string model", () => {
+  it("does not write to chatHistory in sessionStorage", () => {
+    const payload = {
+      model: "test-model",
+      messages: [{ role: "user", content: "hello" }],
+      request_id: "req-1",
+    };
+    sessionStorage.setItem("playground_replay", JSON.stringify(payload));
+
+    readAndClearReplay();
+
+    expect(sessionStorage.getItem("chatHistory")).toBeNull();
+  });
+
+  it("returns null and cleans up the key for a payload with non-string model", () => {
     sessionStorage.setItem("playground_replay", JSON.stringify({ model: 42, messages: [] }));
-    const raw = sessionStorage.getItem("playground_replay");
-    const data = JSON.parse(raw!);
-    expect(typeof data.model === "string" && Array.isArray(data.messages)).toBe(false);
+
+    const result = readAndClearReplay();
+
+    expect(result).toBeNull();
+    expect(sessionStorage.getItem("playground_replay")).toBeNull();
+  });
+
+  it("returns null and cleans up the key for a payload with non-array messages", () => {
+    sessionStorage.setItem("playground_replay", JSON.stringify({ model: "gpt-4", messages: "not-an-array" }));
+
+    const result = readAndClearReplay();
+
+    expect(result).toBeNull();
+    expect(sessionStorage.getItem("playground_replay")).toBeNull();
+  });
+
+  it("returns null and cleans up the key for malformed JSON", () => {
+    sessionStorage.setItem("playground_replay", "{{broken");
+
+    const result = readAndClearReplay();
+
+    expect(result).toBeNull();
+    expect(sessionStorage.getItem("playground_replay")).toBeNull();
   });
 });

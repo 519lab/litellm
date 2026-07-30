@@ -23,14 +23,13 @@ interface ReplayPayload {
   request_id: string;
 }
 
-function readAndClearReplay(): ReplayPayload | null {
+export function readAndClearReplay(): ReplayPayload | null {
   const raw = sessionStorage.getItem("playground_replay");
   if (!raw) return null;
   sessionStorage.removeItem("playground_replay");
   try {
     const data = JSON.parse(raw);
     if (typeof data.model !== "string" || !Array.isArray(data.messages)) return null;
-    sessionStorage.setItem("chatHistory", JSON.stringify(data.messages));
     return data as ReplayPayload;
   } catch {
     return null;
@@ -90,6 +89,7 @@ export default function PlaygroundPage() {
               disabledPersonalKeyCreation={disabledPersonalKeyCreation}
               proxySettings={proxySettings}
               initialModel={replay?.model}
+              initialMessages={replay?.messages}
             />
           </TabPanel>
           <TabPanel className="h-full">
