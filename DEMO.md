@@ -39,7 +39,6 @@ request in an OpenTelemetry span and exports it to any OTLP/gRPC receiver.
 
 2. Set the endpoint env var (optional, defaults to `http://localhost:4317`):
    ```bash
-   # In /home/ggrace/.config/litellm/.env
    OTLP_ENDPOINT=http://localhost:4317
    ```
 
@@ -47,7 +46,7 @@ request in an OpenTelemetry span and exports it to any OTLP/gRPC receiver.
    ```yaml
    litellm_settings:
      callbacks:
-       - litellm.proxy.hooks.otlp_tracer.proxy_handler_instance
+       - litellm.proxy.hooks.otlp_tracer.make_hook
    ```
 
 4. Start a local OTLP receiver. The easiest option for a single machine:

@@ -26,13 +26,15 @@ raises into the request path.
 
 import os
 import time
-from typing import Any, Optional
+from typing import TYPE_CHECKING, TypedDict
 
 from litellm._logging import verbose_proxy_logger
 from litellm.integrations.custom_logger import CustomLogger
 
+if TYPE_CHECKING:
+    from opentelemetry.trace import Span, Tracer
+
 try:
-    from opentelemetry import trace
     from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
     from opentelemetry.sdk.resources import Resource
     from opentelemetry.sdk.trace import TracerProvider
@@ -46,12 +48,17 @@ except ImportError:
 
 _INSTRUMENTATION_NAME = "litellm-proxy"
 _SPAN_NAME = "llm.completion"
-_STALE_SPAN_TTL_S = 300.0  # spans older than 5 minutes are swept as lost
+_STALE_SPAN_TTL_S = 300.0
 
 
-def _parse_float(val: Any) -> Optional[float]:
+class _SpanEntry(TypedDict):
+    span: "Span"
+    t0: float
+
+
+def _parse_float(val: str | int | float | None) -> float | None:
     try:
-        return float(val)
+        return float(val)  # pyright: ignore[reportArgumentType]  # intentional: accepts any numeric-ish value
     except (TypeError, ValueError):
         return None
 
@@ -66,12 +73,12 @@ class OTLPTracerHook(CustomLogger):
     processing time.
     """
 
-    def __init__(self, otlp_endpoint: str = "http://localhost:4317", _tracer: Any = None) -> None:
+    def __init__(self, otlp_endpoint: str = "http://localhost:4317", _tracer: "Tracer | None" = None) -> None:
         super().__init__()
-        self._active: dict[str, Any] = {}  # mutable-ok: in-flight span registry, keyed by litellm_call_id
+        self._active: dict[str, _SpanEntry] = {}  # mutable-ok: in-flight span registry, keyed by litellm_call_id
 
         if _tracer is not None:
-            self._tracer: Any = _tracer
+            self._tracer: "Tracer | None" = _tracer
             return
 
         if not _OTEL_AVAILABLE:
@@ -88,27 +95,25 @@ class OTLPTracerHook(CustomLogger):
         provider.add_span_processor(BatchSpanProcessor(exporter))
         self._tracer = provider.get_tracer(_INSTRUMENTATION_NAME)
 
-        verbose_proxy_logger.info(
-            "OTLPTracerHook: exporting spans to %s", otlp_endpoint
-        )
+        verbose_proxy_logger.info("OTLPTracerHook: exporting spans to %s", otlp_endpoint)
 
     # -- Pre-call ---------------------------------------------------------
 
     async def async_pre_call_hook(
         self,
-        user_api_key_dict: Any,
-        cache_obj: Any,
-        data: dict,
+        user_api_key_dict: object,
+        cache_obj: object,
+        data: dict[str, object],
         call_type: str,
-    ) -> dict:
+    ) -> dict[str, object]:
         if self._tracer is None:
             return data
         call_id = data.get("litellm_call_id")
-        if not call_id:
+        if not isinstance(call_id, str):
             return data
         self._sweep_stale_spans()
         span = self._tracer.start_span(_SPAN_NAME)
-        span.set_attribute("llm.model", data.get("model", ""))
+        span.set_attribute("llm.model", str(data.get("model", "")))
         span.set_attribute("cache.hit", False)
         self._active[call_id] = {"span": span, "t0": time.monotonic()}
         return data
@@ -117,10 +122,10 @@ class OTLPTracerHook(CustomLogger):
 
     async def async_log_success_event(
         self,
-        kwargs: dict,
-        response_obj: Any,
-        start_time: Any,
-        end_time: Any,
+        kwargs: dict[str, object],
+        response_obj: object,
+        start_time: object,
+        end_time: object,
     ) -> None:
         self._close_span(kwargs, response_obj=response_obj, error=False)
 
@@ -128,10 +133,10 @@ class OTLPTracerHook(CustomLogger):
 
     async def async_log_failure_event(
         self,
-        kwargs: dict,
-        response_obj: Any,
-        start_time: Any,
-        end_time: Any,
+        kwargs: dict[str, object],
+        response_obj: object,
+        start_time: object,
+        end_time: object,
     ) -> None:
         self._close_span(kwargs, response_obj=response_obj, error=True)
 
@@ -153,11 +158,11 @@ class OTLPTracerHook(CustomLogger):
             finally:
                 entry["span"].end()
 
-    def _close_span(self, kwargs: dict, *, response_obj: Any, error: bool) -> None:
+    def _close_span(self, kwargs: dict[str, object], *, response_obj: object, error: bool) -> None:
         if self._tracer is None:
             return
         call_id = kwargs.get("litellm_call_id")
-        if not call_id:
+        if not isinstance(call_id, str):
             return
         entry = self._active.pop(call_id, None)
         if entry is None:
@@ -183,7 +188,8 @@ class OTLPTracerHook(CustomLogger):
                 span.set_attribute("llm.tps", round(tps, 2))
 
             # llama.cpp response headers forwarded via response_obj
-            hdrs: dict = getattr(response_obj, "_response_headers", None) or {}
+            raw_hdrs = getattr(response_obj, "_response_headers", None)
+            hdrs: dict[str, str] = raw_hdrs if isinstance(raw_hdrs, dict) else {}
             raw_tps = hdrs.get("x-llamacpp-tokens-per-second")
             if raw_tps is not None:
                 v = _parse_float(raw_tps)
@@ -212,6 +218,3 @@ class OTLPTracerHook(CustomLogger):
 def make_hook() -> OTLPTracerHook:
     endpoint = os.getenv("OTLP_ENDPOINT", "http://localhost:4317")
     return OTLPTracerHook(otlp_endpoint=endpoint)
-
-
-proxy_handler_instance = make_hook()
