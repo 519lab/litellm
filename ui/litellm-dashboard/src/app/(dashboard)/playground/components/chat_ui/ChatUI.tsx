@@ -96,6 +96,10 @@ interface ChatUIProps {
   simplified?: boolean;
   /** When simplified is true, use this as the model and do not show model selector. */
   fixedModel?: string;
+  /** Pre-select this model on first load (e.g. when replaying a request from spend logs). */
+  initialModel?: string;
+  /** Pre-populate chat history on first load (e.g. when replaying a request from spend logs). */
+  initialMessages?: MessageType[];
 }
 
 const MCP_SUPPORTED_ENDPOINTS = new Set<EndpointType>([EndpointType.CHAT, EndpointType.RESPONSES, EndpointType.MCP]);
@@ -111,6 +115,8 @@ const ChatUI: React.FC<ChatUIProps> = ({
   proxySettings,
   simplified = false,
   fixedModel,
+  initialModel,
+  initialMessages,
 }) => {
   const [mcpServers, setMCPServers] = useState<MCPServer[]>([]);
   const [mcpToolsets, setMCPToolsets] = useState<MCPToolset[]>([]);
@@ -166,6 +172,19 @@ const ChatUI: React.FC<ChatUIProps> = ({
     clearChatHistory: clearChatHistoryHook,
     clearMCPEvents,
   } = useChatHistory({ simplified });
+
+  useEffect(() => {
+    if (initialMessages && initialMessages.length > 0) {
+      setChatHistory(initialMessages);
+    }
+  }, [initialMessages]);
+
+  useEffect(() => {
+    if (initialModel) {
+      setSelectedModel(initialModel);
+    }
+  }, [initialModel]);
+
   // codeql[js/clear-text-storage-of-sensitive-data]
   const [apiKeySource, setApiKeySource] = useState<"session" | "custom">(() => {
     const saved = getSecureItem("apiKeySource");
@@ -183,7 +202,7 @@ const ChatUI: React.FC<ChatUIProps> = ({
     () => sessionStorage.getItem("customProxyBaseUrl") || "",
   );
   const [inputMessage, setInputMessage] = useState("");
-  const [selectedModel, setSelectedModel] = useState<string | undefined>(simplified ? fixedModel : undefined);
+  const [selectedModel, setSelectedModel] = useState<string | undefined>(simplified ? fixedModel : (initialModel ?? undefined));
   const [showCustomModelInput, setShowCustomModelInput] = useState<boolean>(false);
   const [modelInfo, setModelInfo] = useState<ModelGroup[]>([]);
   const [agentInfo, setAgentInfo] = useState<Agent[]>([]);

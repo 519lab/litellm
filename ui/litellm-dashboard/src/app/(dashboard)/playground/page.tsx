@@ -8,6 +8,7 @@ import CompareUI from "@/app/(dashboard)/playground/components/compareUI/Compare
 import ComplianceUI from "@/app/(dashboard)/playground/components/complianceUI/ComplianceUI";
 import { TabGroup, TabList, Tab, TabPanels, TabPanel } from "@tremor/react";
 import { DeprecationBanner } from "@/components/DeprecationBanner";
+import { ReplayBanner } from "@/components/view_logs/ReplayBanner";
 import useAuthorized from "@/app/(dashboard)/hooks/useAuthorized";
 import { fetchProxySettings } from "@/utils/proxyUtils";
 import { Button } from "@/components/ui/button";
@@ -16,10 +17,30 @@ import { PlaygroundHistoryPanel } from "./components/PlaygroundHistoryPanel";
 import { SaveRunDialog } from "./components/SaveRunDialog";
 import { RunDetailDialog } from "./components/RunDetailDialog";
 import type { PlaygroundRun } from "./hooks/usePlaygroundHistory";
+import type { MessageType } from "@/components/chat_ui/types";
 
 interface ProxySettings {
   PROXY_BASE_URL?: string;
   LITELLM_UI_API_DOC_BASE_URL?: string | null;
+}
+
+interface ReplayPayload {
+  model: string;
+  messages: MessageType[];
+  request_id: string;
+}
+
+export function readAndClearReplay(): ReplayPayload | null {
+  const raw = sessionStorage.getItem("playground_replay");
+  if (!raw) return null;
+  sessionStorage.removeItem("playground_replay");
+  try {
+    const data = JSON.parse(raw);
+    if (typeof data.model !== "string" || !Array.isArray(data.messages)) return null;
+    return data as ReplayPayload;
+  } catch {
+    return null;
+  }
 }
 
 export default function PlaygroundPage() {
@@ -28,8 +49,15 @@ export default function PlaygroundPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [saveOpen, setSaveOpen] = useState(false);
   const [detailRun, setDetailRun] = useState<PlaygroundRun | undefined>(undefined);
+  const [replay, setReplay] = useState<ReplayPayload | null>(null);
 
   const { runs, addRun, deleteRun, clearHistory } = usePlaygroundHistory();
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setReplay(readAndClearReplay());
+    }
+  }, []);
 
   useEffect(() => {
     const initializeProxySettings = async () => {
@@ -54,6 +82,13 @@ export default function PlaygroundPage() {
 
   return (
     <div className="h-full w-full flex flex-col">
+      {replay && (
+        <ReplayBanner
+          model={replay.model}
+          requestId={replay.request_id}
+          onDismiss={() => setReplay(null)}
+        />
+      )}
       <div className="flex items-center justify-end gap-2 px-4 py-2 border-b border-border shrink-0">
         <Button
           variant="outline"
@@ -96,6 +131,8 @@ export default function PlaygroundPage() {
               userID={userId}
               disabledPersonalKeyCreation={disabledPersonalKeyCreation}
               proxySettings={proxySettings}
+              initialModel={replay?.model}
+              initialMessages={replay?.messages}
             />
           </TabPanel>
           <TabPanel className="h-full">
