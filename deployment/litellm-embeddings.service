@@ -1,0 +1,23 @@
+[Unit]
+Description=LiteLLM Local Embeddings Server (all-MiniLM-L6-v2)
+After=network.target
+PartOf=litellm.service
+
+[Service]
+Type=simple
+User=ggrace
+Group=ggrace
+WorkingDirectory=/home/ggrace/litellm-fork
+ExecStart=/home/ggrace/.local/share/litellm-venv/bin/python \
+    -m litellm.proxy.hooks.local_embeddings_server
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=litellm-embeddings
+
+# Give the model time to load on first start
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target

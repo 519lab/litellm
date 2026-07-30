@@ -1,0 +1,28 @@
+# Semantic cache configuration snippet.
+# Merge these sections into /home/ggrace/.config/litellm/config.yaml
+# after completing the cut-over steps in DEMO.md (innovation/semantic-cache).
+
+model_list:
+  # Existing models stay here. Add this entry for the local embedding model:
+  - model_name: "local/minilm"
+    litellm_params:
+      model: openai/all-MiniLM-L6-v2
+      api_base: http://127.0.0.1:8890/v1
+      api_key: none
+
+litellm_settings:
+  cache: true
+  cache_params:
+    type: valkey-semantic
+    host: 127.0.0.1
+    port: 6379
+    ttl: 600
+    mode: default_on
+    supported_call_types:
+      - completion
+      - acompletion
+    # Embedding model used to compute similarity vectors:
+    valkey_semantic_cache_embedding_model: "local/minilm"
+    # Similarity threshold: 1.0 = exact match, 0.0 = always hit.
+    # 0.92 rejects off-topic rephrases while catching genuine repeats.
+    redis_semantic_cache_similarity_threshold: 0.92
