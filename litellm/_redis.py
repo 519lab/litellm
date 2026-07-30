@@ -688,8 +688,22 @@ def get_redis_connection_pool(
     elif redis_connect_func and hasattr(redis_connect_func, "_gcp_service_account"):
         redis_kwargs["credential_provider"] = GCPIAMCredentialProvider(redis_connect_func._gcp_service_account)
 
-    if redis_kwargs.pop("ssl", None):
+    ssl = redis_kwargs.pop("ssl", None)
+    if ssl:
         redis_kwargs["connection_class"] = async_redis.SSLConnection
+    else:
+        for _ssl_key in (
+            "ssl_check_hostname",
+            "ssl_keyfile",
+            "ssl_certfile",
+            "ssl_ca_certs",
+            "ssl_ca_data",
+            "ssl_ca_path",
+            "ssl_min_version",
+            "ssl_ciphers",
+            "ssl_password",
+        ):
+            redis_kwargs.pop(_ssl_key, None)
     return async_redis.BlockingConnectionPool(timeout=REDIS_CONNECTION_POOL_TIMEOUT, **redis_kwargs)
 
 

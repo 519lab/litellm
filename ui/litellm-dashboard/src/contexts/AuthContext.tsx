@@ -43,7 +43,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [userRole, setUserRole] = useState("");
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
-  const [premiumUser, setPremiumUser] = useState(false);
+  const [premiumUser, setPremiumUser] = useState(true);
   const [disabledPersonalKeyCreation, setDisabledPersonalKeyCreation] = useState(false);
   const [showSSOBanner, setShowSSOBanner] = useState(true);
 
@@ -114,9 +114,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     if (decoded.login_method) {
       setShowSSOBanner(decoded.login_method === "username_password");
-    }
-    if (decoded.premium_user) {
-      setPremiumUser(decoded.premium_user);
     }
     if (decoded.auth_header_name) {
       setGlobalLitellmHeaderName(decoded.auth_header_name);
