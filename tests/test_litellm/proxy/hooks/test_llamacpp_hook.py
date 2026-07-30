@@ -166,3 +166,83 @@ async def test_hook_returns_none_when_no_modification_needed(hook):
     kwargs = _llamacpp_kwargs(messages=[{"role": "user", "content": "hello"}])
     result = await hook.async_pre_call_deployment_hook(kwargs, call_type=None)
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_hook_returns_none_when_schema_has_no_stripped_keys(hook):
+    """A schema with no offending keys must not trigger a return (modified=False)."""
+    kwargs = _llamacpp_kwargs(
+        tools=[{
+            "type": "function",
+            "function": {
+                "name": "fn",
+                "parameters": {"type": "object", "properties": {"x": {"type": "string"}}},
+            },
+        }]
+    )
+    result = await hook.async_pre_call_deployment_hook(kwargs, call_type=None)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_hook_activates_via_litellm_params(hook):
+    kwargs = {
+        "litellm_params": {"api_base": LLAMACPP_API_BASE},
+        "tools": [{
+            "type": "function",
+            "function": {
+                "name": "fn",
+                "parameters": {"type": "object", "properties": {"x": {"pattern": ".*"}}},
+            },
+        }],
+    }
+    result = await hook.async_pre_call_deployment_hook(kwargs, call_type=None)
+    assert result is not None
+    assert "pattern" not in result["tools"][0]["function"]["parameters"]["properties"]["x"]
+
+
+@pytest.mark.asyncio
+async def test_hook_survives_litellm_params_none(hook):
+    """litellm_params=None must not crash _is_llamacpp."""
+    kwargs = {"api_base": "https://api.openai.com", "litellm_params": None}
+    result = await hook.async_pre_call_deployment_hook(kwargs, call_type=None)
+    assert result is None  # non-llamacpp, no crash
+
+
+def test_items_as_list_traversed():
+    schema = {
+        "type": "array",
+        "items": [
+            {"type": "string", "pattern": "^x$"},
+            {"type": "integer", "minimum": 0},
+        ],
+    }
+    _sanitize_schema(schema)
+    assert "pattern" not in schema["items"][0]
+    assert "minimum" not in schema["items"][1]
+
+
+def test_if_then_else_traversed():
+    schema = {
+        "if": {"type": "string", "pattern": "^y$"},
+        "then": {"type": "integer", "minimum": 1},
+        "else": {"type": "number", "maximum": 99},
+    }
+    _sanitize_schema(schema)
+    assert "pattern" not in schema["if"]
+    assert "minimum" not in schema["then"]
+    assert "maximum" not in schema["else"]
+
+
+def test_sanitize_schema_returns_true_on_change():
+    assert _sanitize_schema({"type": "string", "pattern": ".*"}) is True
+
+
+def test_sanitize_schema_returns_false_when_clean():
+    assert _sanitize_schema({"type": "string"}) is False
+
+
+def test_maxlength_at_cap_not_clamped():
+    schema = {"type": "string", "maxLength": _LEN_CAP}
+    _sanitize_schema(schema, depth=1)
+    assert schema["maxLength"] == _LEN_CAP  # exactly at cap — must not be touched

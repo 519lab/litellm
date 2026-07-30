@@ -1,8 +1,9 @@
+import os
 from typing import Any, Dict, Optional
 
 from litellm.integrations.custom_logger import CustomLogger
 
-LLAMACPP_API_BASE = "http://127.0.0.1:56669"
+LLAMACPP_API_BASE = os.getenv("LLAMACPP_API_BASE", "http://127.0.0.1:56669")
 _LEN_CAP = 256
 
 # Dropped unconditionally at every depth.
@@ -14,40 +15,57 @@ _STRIP_KEYS = frozenset({
 })
 
 
-def _sanitize_schema(schema: Any, depth: int = 0) -> None:
+def _sanitize_schema(schema: Any, depth: int = 0) -> bool:
+    """Strip llama.cpp-incompatible JSON Schema keywords in-place. Returns True if any change was made."""
     if not isinstance(schema, dict):
-        return
+        return False
+    changed = False
     for k in _STRIP_KEYS:
-        schema.pop(k, None)
-    # minLength/maxLength at the top-level parameters object are fine; clamp
-    # only in nested sub-schemas where large values overflow the grammar.
+        if k in schema:
+            del schema[k]
+            changed = True
     if depth > 0:
         for key in ("minLength", "maxLength"):
             val = schema.get(key)
             if isinstance(val, int) and val > _LEN_CAP:
                 schema[key] = _LEN_CAP
+                changed = True
     for key in ("properties", "$defs", "definitions"):
         if key in schema and isinstance(schema[key], dict):
             for sub in schema[key].values():
-                _sanitize_schema(sub, depth + 1)
+                if _sanitize_schema(sub, depth + 1):
+                    changed = True
     for key in ("items", "additionalProperties"):
         val = schema.get(key)
         if isinstance(val, dict):
-            _sanitize_schema(val, depth + 1)
+            if _sanitize_schema(val, depth + 1):
+                changed = True
+        elif isinstance(val, list):  # tuple-style items (draft-07)
+            for sub in val:
+                if _sanitize_schema(sub, depth + 1):
+                    changed = True
     for key in ("anyOf", "oneOf", "allOf"):
         val = schema.get(key)
         if isinstance(val, list):
             for sub in val:
-                _sanitize_schema(sub, depth + 1)
+                if _sanitize_schema(sub, depth + 1):
+                    changed = True
     not_val = schema.get("not")
     if isinstance(not_val, dict):
-        _sanitize_schema(not_val, depth + 1)
+        if _sanitize_schema(not_val, depth + 1):
+            changed = True
+    for key in ("if", "then", "else"):
+        val = schema.get(key)
+        if isinstance(val, dict):
+            if _sanitize_schema(val, depth + 1):
+                changed = True
+    return changed
 
 
 class LlamaCppPatternStripper(CustomLogger):
 
     def _is_llamacpp(self, kwargs: Dict[str, Any]) -> bool:
-        api_base = kwargs.get("api_base") or kwargs.get("litellm_params", {}).get("api_base", "")
+        api_base = kwargs.get("api_base") or (kwargs.get("litellm_params") or {}).get("api_base", "")
         return isinstance(api_base, str) and api_base.startswith(LLAMACPP_API_BASE)
 
     async def async_pre_call_deployment_hook(
@@ -67,15 +85,15 @@ class LlamaCppPatternStripper(CustomLogger):
                     continue
                 params = tool.get("function", {}).get("parameters")
                 if isinstance(params, dict):
-                    _sanitize_schema(params)
-                    modified = True
+                    if _sanitize_schema(params):
+                        modified = True
 
         rf = kwargs.get("response_format")
         if isinstance(rf, dict) and rf.get("type") == "json_schema":
             schema = rf.get("json_schema", {}).get("schema")
             if isinstance(schema, dict):
-                _sanitize_schema(schema)
-                modified = True
+                if _sanitize_schema(schema):
+                    modified = True
 
         return kwargs if modified else None
 
