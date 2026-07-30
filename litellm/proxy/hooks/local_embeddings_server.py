@@ -59,6 +59,10 @@ def create_embeddings(request: EmbeddingRequest) -> dict:
             detail=f"encoding_format '{request.encoding_format}' is not supported; use 'float'",
         )
 
+    texts = [request.input] if isinstance(request.input, str) else request.input
+    if not texts:
+        raise HTTPException(status_code=422, detail="input must be a non-empty string or list")
+
     try:
         model = _get_model()
     except ImportError:
@@ -67,12 +71,7 @@ def create_embeddings(request: EmbeddingRequest) -> dict:
             detail="sentence-transformers not installed. Run: pip install sentence-transformers",
         )
 
-    texts = [request.input] if isinstance(request.input, str) else request.input
-    if not texts:
-        raise HTTPException(status_code=422, detail="input must be a non-empty string or list")
-
-    with _model_lock:
-        vectors = model.encode(texts, convert_to_numpy=True)
+    vectors = model.encode(texts, convert_to_numpy=True)
 
     data = [
         {"object": "embedding", "embedding": vec.tolist(), "index": i}

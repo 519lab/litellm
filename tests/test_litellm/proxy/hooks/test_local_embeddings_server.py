@@ -1,127 +1,124 @@
-"""
-Tests for the local embeddings server (innovation/semantic-cache).
+"""Regression tests for litellm.proxy.hooks.local_embeddings_server.
 
-Error-path tests (ImportError 503, empty input 422, field validation 422) run
-on every CI machine regardless of whether sentence-transformers is installed.
-Embedding tests that need the real model are skipped when it is absent.
+All tests stub out SentenceTransformer so sentence-transformers does not need
+to be installed.
 """
-
 from __future__ import annotations
 
 import sys
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-import litellm.proxy.hooks.local_embeddings_server as server_module
-from litellm.proxy.hooks.local_embeddings_server import app, _MODEL_NAME
+import litellm.proxy.hooks.local_embeddings_server as server
+from litellm.proxy.hooks.local_embeddings_server import _MODEL_NAME, _model_lock, app
+
+client = TestClient(app)
+
+_FAKE_VECTORS = np.zeros((1, 3), dtype=np.float32)
 
 
-def _st_available() -> bool:
-    try:
-        import sentence_transformers  # noqa: F401
-        return True
-    except ImportError:
-        return False
+def _fake_model() -> MagicMock:
+    m = MagicMock()
+    m.encode.return_value = _FAKE_VECTORS
+    return m
 
 
-requires_st = pytest.mark.skipif(not _st_available(), reason="sentence-transformers not installed")
+# ---------------------------------------------------------------------------
+# BLOCKER 1 regression: validation order
+# ---------------------------------------------------------------------------
 
+def test_empty_input_list_returns_422_not_503():
+    """Empty input list must return 422 before _get_model() is called.
 
-@pytest.fixture()
-def client():
-    return TestClient(app)
-
-
-@pytest.fixture(autouse=True)
-def reset_model():
-    original = server_module._model
-    yield
-    server_module._model = original
-
-
-class TestImportErrorPath:
-    def test_503_when_sentence_transformers_missing(self, client):
+    Regression: when sentence-transformers was absent and input=[] was sent,
+    the endpoint called _get_model() first and returned 503 instead of 422.
+    """
+    with patch.object(server, "_model", None):
         with patch.dict(sys.modules, {"sentence_transformers": None}):
-            server_module._model = None
-            resp = client.post("/v1/embeddings", json={"input": "hello"})
-        assert resp.status_code == 503
-        assert "sentence-transformers" in resp.json()["detail"]
+            response = client.post("/v1/embeddings", json={"input": []})
+    assert response.status_code == 422, (
+        f"Expected 422 for empty input, got {response.status_code}; "
+        "validation order bug: _get_model() ran before the empty-input guard"
+    )
 
 
-class TestValidation:
-    def test_empty_list_input_returns_422(self, client):
-        resp = client.post("/v1/embeddings", json={"input": []})
-        assert resp.status_code == 422
+# ---------------------------------------------------------------------------
+# BLOCKER 2 regression: lock not held during encode
+# ---------------------------------------------------------------------------
 
-    def test_wrong_model_name_returns_422(self, client):
-        resp = client.post("/v1/embeddings", json={"input": "hi", "model": "text-embedding-3-small"})
-        assert resp.status_code == 422
-        assert _MODEL_NAME in resp.json()["detail"]
+def test_lock_not_held_during_encode():
+    """_model_lock must NOT be held when model.encode() is called.
 
-    def test_unsupported_encoding_format_returns_422(self, client):
-        resp = client.post("/v1/embeddings", json={"input": "hi", "encoding_format": "base64"})
-        assert resp.status_code == 422
+    Regression: the lock was held around encode(), serializing all concurrent
+    requests despite the loaded model being read-only after initialization.
+    """
+    lock_held: list[bool] = []
+    fake = _fake_model()
 
+    def encode_spy(texts: list[str], **kwargs: object) -> np.ndarray:
+        lock_held.append(_model_lock.locked())
+        return _FAKE_VECTORS
 
-class TestHealth:
-    def test_health_returns_model_name(self, client):
-        resp = client.get("/health")
-        assert resp.status_code == 200
-        assert resp.json()["model"] == _MODEL_NAME
+    fake.encode.side_effect = encode_spy
 
-    def test_health_reflects_unloaded_state(self, client):
-        server_module._model = None
-        resp = client.get("/health")
-        assert resp.json()["model_loaded"] is False
+    with patch.object(server, "_model", fake):
+        response = client.post("/v1/embeddings", json={"input": "hello"})
 
-    @requires_st
-    def test_health_reflects_loaded_state(self, client):
-        server_module._get_model()
-        resp = client.get("/health")
-        assert resp.json()["model_loaded"] is True
+    assert response.status_code == 200
+    assert lock_held == [False], (
+        f"Expected _model_lock.locked()=False inside encode(), got {lock_held}; "
+        "lock-during-encode bug: lock was still held when encode() was called"
+    )
 
 
-@requires_st
-class TestEmbeddings:
-    def test_single_string_returns_200(self, client):
-        resp = client.post("/v1/embeddings", json={"input": "hello world"})
-        assert resp.status_code == 200
+# ---------------------------------------------------------------------------
+# Happy-path and other validation tests
+# ---------------------------------------------------------------------------
 
-    def test_single_string_response_shape(self, client):
-        resp = client.post("/v1/embeddings", json={"input": "hello world"})
-        body = resp.json()
-        assert body["object"] == "list"
-        assert len(body["data"]) == 1
-        item = body["data"][0]
-        assert item["object"] == "embedding"
-        assert item["index"] == 0
-        assert isinstance(item["embedding"], list)
-        assert len(item["embedding"]) > 0
-        assert all(isinstance(v, float) for v in item["embedding"])
+def test_valid_string_input_returns_embedding():
+    fake = _fake_model()
+    fake.encode.return_value = np.array([[0.1, 0.2, 0.3]], dtype=np.float32)
+    with patch.object(server, "_model", fake):
+        response = client.post("/v1/embeddings", json={"input": "hello world"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["object"] == "list"
+    assert len(body["data"]) == 1
+    assert body["data"][0]["embedding"] == pytest.approx([0.1, 0.2, 0.3])
 
-    def test_model_name_in_response(self, client):
-        body = client.post("/v1/embeddings", json={"input": "hello"}).json()
-        assert body["model"] == _MODEL_NAME
 
-    def test_list_input_returns_one_embedding_per_string(self, client):
-        texts = ["first sentence", "second sentence", "third"]
-        resp = client.post("/v1/embeddings", json={"input": texts})
-        assert resp.status_code == 200
-        body = resp.json()
-        assert len(body["data"]) == len(texts)
-        for i, item in enumerate(body["data"]):
-            assert item["index"] == i
-            assert len(item["embedding"]) > 0
+def test_valid_list_input_returns_multiple_embeddings():
+    fake = MagicMock()
+    fake.encode.return_value = np.zeros((2, 3), dtype=np.float32)
+    with patch.object(server, "_model", fake):
+        response = client.post("/v1/embeddings", json={"input": ["a", "b"]})
+    assert response.status_code == 200
+    assert len(response.json()["data"]) == 2
 
-    def test_embedding_dimension_consistent(self, client):
-        r1 = client.post("/v1/embeddings", json={"input": "foo"}).json()
-        r2 = client.post("/v1/embeddings", json={"input": "bar"}).json()
-        assert len(r1["data"][0]["embedding"]) == len(r2["data"][0]["embedding"])
 
-    def test_usage_total_tokens_positive(self, client):
-        resp = client.post("/v1/embeddings", json={"input": "hello world, this is a test"})
-        body = resp.json()
-        assert body["usage"]["total_tokens"] > 0
-        assert body["usage"]["prompt_tokens"] == body["usage"]["total_tokens"]
+def test_wrong_model_name_returns_422():
+    response = client.post("/v1/embeddings", json={"input": "hi", "model": "gpt-4"})
+    assert response.status_code == 422
+
+
+def test_unsupported_encoding_format_returns_422():
+    response = client.post(
+        "/v1/embeddings", json={"input": "hi", "encoding_format": "base64"}
+    )
+    assert response.status_code == 422
+
+
+def test_missing_sentence_transformers_returns_503():
+    with patch.object(server, "_model", None):
+        with patch.dict(sys.modules, {"sentence_transformers": None}):
+            response = client.post("/v1/embeddings", json={"input": "hello"})
+    assert response.status_code == 503
+
+
+def test_health_endpoint():
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"

@@ -21,17 +21,17 @@ Three new files:
 
 ### Step 1 — install sentence-transformers
 ```bash
-/home/ggrace/.local/share/litellm-venv/bin/pip install sentence-transformers
+"$HOME/.local/share/litellm-venv/bin/pip" install sentence-transformers
 ```
 First run downloads `all-MiniLM-L6-v2` (~22 MB) to `~/.cache/huggingface/`.
 
 ### Step 2 — switch to valkey-search image
 ```bash
-cd /home/ggrace/valkey
+cd "$HOME/valkey"
 # Back up the live compose:
 cp redis-valkey-compose.yaml redis-valkey-compose.yaml.bak
 # Replace with the search-enabled version:
-cp /home/ggrace/litellm-fork/deployment/valkey-compose-with-search.yaml redis-valkey-compose.yaml
+cp "$HOME/litellm-fork/deployment/valkey-compose-with-search.yaml" redis-valkey-compose.yaml
 docker compose -f redis-valkey-compose.yaml down
 docker compose -f redis-valkey-compose.yaml up -d
 # Verify module is loaded:
@@ -41,7 +41,7 @@ docker exec redis-valkey valkey-cli MODULE LIST
 
 ### Step 3 — install and start the embedding service
 ```bash
-sudo cp /home/ggrace/litellm-fork/deployment/litellm-embeddings.service \
+sudo cp "$HOME/litellm-fork/deployment/litellm-embeddings.service" \
     /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now litellm-embeddings
@@ -54,7 +54,7 @@ curl -s -X POST http://localhost:8890/v1/embeddings \
 
 ### Step 4 — update the live config
 Merge the relevant sections from `config_examples/semantic-cache.yaml` into
-`/home/ggrace/.config/litellm/config.yaml`:
+`~/.config/litellm/config.yaml`:
 - Add the `local/minilm` entry under `model_list`
 - Replace the `cache_params` block (change `type` to `valkey-semantic`, add
   `valkey_semantic_cache_embedding_model`, `redis_semantic_cache_similarity_threshold`,
@@ -78,8 +78,7 @@ sudo systemctl restart litellm
 
 - The similarity threshold (0.92) is a starting point. Lower it if you're seeing
   too many misses; raise it if you're seeing false hits (wrong answers returned).
-- The embedding server has no auth. It binds to `0.0.0.0`; if this machine is on
-  a network, bind to `127.0.0.1` by changing the `uvicorn.run` call.
+- The embedding server has no auth. It binds to `127.0.0.1`.
 - The `valkey-search:8.0.1-ubuntu` image is larger than `valkey:8.0.1-alpine`. The
   existing volume (`redis-data`) is reused, so existing cached data persists.
 

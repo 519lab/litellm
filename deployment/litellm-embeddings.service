@@ -5,10 +5,10 @@ PartOf=litellm.service
 
 [Service]
 Type=simple
-User=ggrace
-Group=ggrace
-WorkingDirectory=/home/ggrace/litellm-fork
-ExecStart=/home/ggrace/.local/share/litellm-venv/bin/python \
+User=YOUR_USER
+Group=YOUR_USER
+WorkingDirectory=%h/litellm-fork
+ExecStart=%h/.local/share/litellm-venv/bin/python \
     -m litellm.proxy.hooks.local_embeddings_server
 Restart=on-failure
 RestartSec=5
