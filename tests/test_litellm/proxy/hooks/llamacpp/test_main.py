@@ -29,8 +29,6 @@ def _llamacpp_kwargs(**extra) -> dict:
     return {"api_base": LLAMACPP_API_BASE, **extra}
 
 
-# --- _sanitize_schema unit tests ---
-
 def test_pattern_keyword_stripped():
     schema = {"type": "string", "pattern": "^[a-z]+$"}
     _sanitize_schema(schema)
@@ -61,14 +59,14 @@ def test_large_minlength_maxlength_clamped_in_nested():
     _sanitize_schema(schema)
     prop = schema["properties"]["name"]
     assert prop["maxLength"] == _LEN_CAP
-    assert prop["minLength"] == 0  # under cap, unchanged
+    assert prop["minLength"] == 0
 
 
 def test_top_level_minlength_maxlength_not_clamped():
     """Top-level length constraints on the parameters object itself are safe."""
     schema = {"type": "string", "minLength": 1, "maxLength": 999}
     _sanitize_schema(schema, depth=0)
-    assert schema["maxLength"] == 999  # not clamped at depth 0
+    assert schema["maxLength"] == 999
 
 
 def test_nested_schemas_sanitized_recursively():
@@ -97,8 +95,6 @@ def test_anyof_oneof_allof_sanitized():
         assert "pattern" not in sub
         assert "minimum" not in sub
 
-
-# --- LlamaCppPatternStripper hook tests ---
 
 @pytest.mark.asyncio
 async def test_hook_sanitizes_tool_parameters(hook):
@@ -157,7 +153,6 @@ async def test_hook_skips_non_llamacpp_backend(hook):
     }
     result = await hook.async_pre_call_deployment_hook(kwargs, call_type=None)
     assert result is None
-    # original untouched
     assert "pattern" in kwargs["tools"][0]["function"]["parameters"]["properties"]["x"]
 
 
@@ -206,7 +201,7 @@ async def test_hook_survives_litellm_params_none(hook):
     """litellm_params=None must not crash _is_llamacpp."""
     kwargs = {"api_base": "https://api.openai.com", "litellm_params": None}
     result = await hook.async_pre_call_deployment_hook(kwargs, call_type=None)
-    assert result is None  # non-llamacpp, no crash
+    assert result is None
 
 
 def test_items_as_list_traversed():
@@ -245,4 +240,12 @@ def test_sanitize_schema_returns_false_when_clean():
 def test_maxlength_at_cap_not_clamped():
     schema = {"type": "string", "maxLength": _LEN_CAP}
     _sanitize_schema(schema, depth=1)
-    assert schema["maxLength"] == _LEN_CAP  # exactly at cap — must not be touched
+    assert schema["maxLength"] == _LEN_CAP
+
+
+def test_recursion_guard_halts_at_max_depth():
+    """Deeply-nested schemas must not cause RecursionError."""
+    schema: dict = {"type": "string", "pattern": "x"}
+    for _ in range(30):
+        schema = {"type": "object", "properties": {"child": schema}}
+    _sanitize_schema(schema)

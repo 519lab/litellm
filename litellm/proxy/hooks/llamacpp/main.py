@@ -1,12 +1,13 @@
 import os
-from typing import Any, Dict, Optional
+from typing import Any
 
 from litellm.integrations.custom_logger import CustomLogger
+from litellm.types.utils import CallTypes
 
 LLAMACPP_API_BASE = os.getenv("LLAMACPP_API_BASE", "http://127.0.0.1:56669")
 _LEN_CAP = 256
+MAX_SCHEMA_DEPTH: int = 20
 
-# Dropped unconditionally at every depth.
 _STRIP_KEYS = frozenset({
     "pattern",
     "minimum", "maximum",
@@ -15,8 +16,10 @@ _STRIP_KEYS = frozenset({
 })
 
 
-def _sanitize_schema(schema: Any, depth: int = 0) -> bool:
+def _sanitize_schema(schema: dict, depth: int = 0) -> bool:
     """Strip llama.cpp-incompatible JSON Schema keywords in-place. Returns True if any change was made."""
+    if depth > MAX_SCHEMA_DEPTH:
+        return False
     if not isinstance(schema, dict):
         return False
     changed = False
@@ -40,7 +43,7 @@ def _sanitize_schema(schema: Any, depth: int = 0) -> bool:
         if isinstance(val, dict):
             if _sanitize_schema(val, depth + 1):
                 changed = True
-        elif isinstance(val, list):  # tuple-style items (draft-07)
+        elif isinstance(val, list):
             for sub in val:
                 if _sanitize_schema(sub, depth + 1):
                     changed = True
@@ -64,15 +67,15 @@ def _sanitize_schema(schema: Any, depth: int = 0) -> bool:
 
 class LlamaCppPatternStripper(CustomLogger):
 
-    def _is_llamacpp(self, kwargs: Dict[str, Any]) -> bool:
+    def _is_llamacpp(self, kwargs: dict[str, Any]) -> bool:
         api_base = kwargs.get("api_base") or (kwargs.get("litellm_params") or {}).get("api_base", "")
         return isinstance(api_base, str) and api_base.startswith(LLAMACPP_API_BASE)
 
     async def async_pre_call_deployment_hook(
         self,
-        kwargs: Dict[str, Any],
-        call_type: Optional[Any],
-    ) -> Optional[dict]:
+        kwargs: dict[str, Any],
+        call_type: CallTypes | None,
+    ) -> dict[str, Any] | None:
         if not self._is_llamacpp(kwargs):
             return None
 
