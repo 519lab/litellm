@@ -14,6 +14,7 @@ Usage:
 
 from __future__ import annotations
 
+import threading
 from typing import Union
 
 import uvicorn
@@ -22,15 +23,20 @@ from pydantic import BaseModel
 
 app = FastAPI(title="Local Embeddings", version="1.0.0")
 
-_model = None
 _MODEL_NAME = "all-MiniLM-L6-v2"
+_model_lock = threading.Lock()
+_model = None  # mutable-ok: lazy singleton, guarded by _model_lock
 
 
 def _get_model():
     global _model
-    if _model is None:
-        from sentence_transformers import SentenceTransformer
-        _model = SentenceTransformer(_MODEL_NAME)
+    with _model_lock:
+        if _model is None:
+            try:
+                from sentence_transformers import SentenceTransformer
+                _model = SentenceTransformer(_MODEL_NAME)
+            except ImportError:
+                raise
     return _model
 
 
@@ -41,7 +47,18 @@ class EmbeddingRequest(BaseModel):
 
 
 @app.post("/v1/embeddings")
-def create_embeddings(request: EmbeddingRequest):
+def create_embeddings(request: EmbeddingRequest) -> dict:
+    if request.model != _MODEL_NAME:
+        raise HTTPException(
+            status_code=422,
+            detail=f"model must be '{_MODEL_NAME}', got '{request.model}'",
+        )
+    if request.encoding_format != "float":
+        raise HTTPException(
+            status_code=422,
+            detail=f"encoding_format '{request.encoding_format}' is not supported; use 'float'",
+        )
+
     try:
         model = _get_model()
     except ImportError:
@@ -54,14 +71,14 @@ def create_embeddings(request: EmbeddingRequest):
     if not texts:
         raise HTTPException(status_code=422, detail="input must be a non-empty string or list")
 
-    vectors = model.encode(texts, convert_to_numpy=True)
+    with _model_lock:
+        vectors = model.encode(texts, convert_to_numpy=True)
 
     data = [
         {"object": "embedding", "embedding": vec.tolist(), "index": i}
         for i, vec in enumerate(vectors)
     ]
 
-    # Approximate token count: split on whitespace, 1.3 tokens per word.
     total_tokens = max(1, int(sum(len(t.split()) * 1.3 for t in texts)))
 
     return {
@@ -73,9 +90,9 @@ def create_embeddings(request: EmbeddingRequest):
 
 
 @app.get("/health")
-def health():
-    return {"status": "ok", "model": _MODEL_NAME}
+def health() -> dict:
+    return {"status": "ok", "model": _MODEL_NAME, "model_loaded": _model is not None}
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8890)
+    uvicorn.run(app, host="127.0.0.1", port=8890)
