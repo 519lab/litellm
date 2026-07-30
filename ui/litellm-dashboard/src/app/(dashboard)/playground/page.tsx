@@ -28,9 +28,10 @@ function readAndClearReplay(): ReplayPayload | null {
   if (!raw) return null;
   sessionStorage.removeItem("playground_replay");
   try {
-    const data = JSON.parse(raw) as ReplayPayload;
+    const data = JSON.parse(raw);
+    if (typeof data.model !== "string" || !Array.isArray(data.messages)) return null;
     sessionStorage.setItem("chatHistory", JSON.stringify(data.messages));
-    return data;
+    return data as ReplayPayload;
   } catch {
     return null;
   }
@@ -39,10 +40,13 @@ function readAndClearReplay(): ReplayPayload | null {
 export default function PlaygroundPage() {
   const { accessToken, userRole, userId, disabledPersonalKeyCreation, token } = useAuthorized();
   const [proxySettings, setProxySettings] = useState<ProxySettings | undefined>(undefined);
-  const [replay, setReplay] = useState<ReplayPayload | null>(() => {
-    if (typeof window === "undefined") return null;
-    return readAndClearReplay();
-  });
+  const [replay, setReplay] = useState<ReplayPayload | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setReplay(readAndClearReplay());
+    }
+  }, []);
 
   useEffect(() => {
     const initializeProxySettings = async () => {

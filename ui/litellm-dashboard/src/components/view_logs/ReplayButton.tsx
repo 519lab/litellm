@@ -9,21 +9,18 @@ import type { LogEntry } from "./columns";
 
 const CHAT_COMPLETION_TYPES = new Set(["completion", "acompletion"]);
 
-function normalizeMessages(raw: string | any[] | Record<string, any>): MessageType[] {
-  let arr: any[];
-  if (typeof raw === "string") {
-    try {
-      arr = JSON.parse(raw);
-    } catch {
-      return [];
-    }
-  } else if (Array.isArray(raw)) {
-    arr = raw;
-  } else {
-    return [];
-  }
+export function normalizeMessages(raw: LogEntry["messages"]): MessageType[] {
+  const arr: unknown[] = Array.isArray(raw)
+    ? raw
+    : typeof raw === "string"
+      ? (() => { try { const p = JSON.parse(raw); return Array.isArray(p) ? p : []; } catch { return []; } })()
+      : [];
   return arr
-    .filter((m) => m && typeof m === "object" && typeof m.role === "string" && m.content !== undefined)
+    .filter((m): m is Record<string, unknown> =>
+      m !== null && typeof m === "object" && !Array.isArray(m) &&
+      typeof (m as Record<string, unknown>).role === "string" &&
+      (m as Record<string, unknown>).content != null
+    )
     .map((m): MessageType => ({
       role: m.role as string,
       content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
