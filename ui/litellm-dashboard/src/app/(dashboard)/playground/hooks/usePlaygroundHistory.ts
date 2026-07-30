@@ -18,14 +18,25 @@ export type PlaygroundRun = {
 const STORAGE_KEY = "playground_history";
 const MAX_RUNS = 50;
 
+function isPlaygroundRun(v: unknown): v is PlaygroundRun {
+  if (typeof v !== "object" || v === null) return false;
+  const obj = v as Record<string, unknown>;
+  return (
+    typeof obj["id"] === "string" &&
+    typeof obj["timestamp"] === "number" &&
+    typeof obj["model"] === "string" &&
+    Array.isArray(obj["messages"])
+  );
+}
+
 export function loadRuns(): PlaygroundRun[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
-    const parsed = JSON.parse(raw);
+    const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed as PlaygroundRun[];
+    return parsed.filter(isPlaygroundRun);
   } catch {
     return [];
   }

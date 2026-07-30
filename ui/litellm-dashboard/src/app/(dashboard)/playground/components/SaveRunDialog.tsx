@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import type { PlaygroundRun } from "../hooks/usePlaygroundHistory";
 
 interface SaveRunDialogProps {
@@ -81,9 +82,9 @@ export function SaveRunDialog({ open, onClose, onSave }: SaveRunDialogProps) {
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="run-response">Response snippet</Label>
-            <textarea
+            <Textarea
               id="run-response"
-              className="border rounded-md p-2 text-sm resize-none min-h-[80px] outline-none focus:ring-1 focus:ring-ring bg-background text-foreground"
+              className="resize-none min-h-[80px]"
               placeholder="Paste the model response here…"
               value={response}
               onChange={(e) => setResponse(e.target.value)}

@@ -94,11 +94,18 @@ export function PlaygroundHistoryPanel({
           <ScrollArea className="flex-1 h-0">
             <div className="flex flex-col gap-1 p-2">
               {runs.map((run) => (
-                <button
+                <div
                   key={run.id}
-                  type="button"
-                  className="group relative flex flex-col gap-1 rounded-md border border-border bg-card p-3 text-left hover:bg-muted/50 transition-colors w-full"
+                  role="button"
+                  tabIndex={0}
+                  className="group relative flex flex-col gap-1 rounded-md border border-border bg-card p-3 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors w-full cursor-pointer"
                   onClick={() => onView(run)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onView(run);
+                    }
+                  }}
                   aria-label={`View run: ${run.label ?? run.model}`}
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -113,7 +120,7 @@ export function PlaygroundHistoryPanel({
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      className="opacity-0 group-hover:opacity-100 shrink-0 -mt-1 -mr-1"
+                      className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 shrink-0 -mt-1 -mr-1"
                       aria-label={`Delete run: ${run.label ?? run.model}`}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -137,7 +144,7 @@ export function PlaygroundHistoryPanel({
                       {run.response.slice(0, 120)}
                     </p>
                   )}
-                </button>
+                </div>
               ))}
             </div>
           </ScrollArea>
