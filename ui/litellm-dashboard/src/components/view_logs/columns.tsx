@@ -7,6 +7,7 @@ import { getProviderLogoAndName } from "../provider_info_helpers";
 import { TableHeaderSortDropdown } from "../common_components/TableHeaderSortDropdown/TableHeaderSortDropdown";
 import { AGENT_CALL_TYPES, MCP_CALL_TYPES } from "./constants";
 import { AgentBadge, AgentIcon, LlmBadge, McpBadge, SparkleIcon, WrenchIcon } from "./TypeBadges";
+import { ReplayButton } from "./ReplayButton";
 
 /** API sort field mapping for /spend/logs/ui endpoint */
 export const LOGS_SORT_FIELD_MAP = {
@@ -427,6 +428,13 @@ export const createColumns = (sortProps?: LogsSortProps): ColumnDef<LogEntry>[] 
         </div>
       );
     },
+  },
+
+  {
+    id: "replay",
+    header: "",
+    size: 40,
+    cell: ({ row }) => <ReplayButton row={row.original} />,
   },
 ];
 

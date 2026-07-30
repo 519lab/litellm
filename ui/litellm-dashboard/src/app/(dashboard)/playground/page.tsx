@@ -7,17 +7,42 @@ import CompareUI from "@/app/(dashboard)/playground/components/compareUI/Compare
 import ComplianceUI from "@/app/(dashboard)/playground/components/complianceUI/ComplianceUI";
 import { TabGroup, TabList, Tab, TabPanels, TabPanel } from "@tremor/react";
 import { DeprecationBanner } from "@/components/DeprecationBanner";
+import { ReplayBanner } from "@/components/view_logs/ReplayBanner";
 import useAuthorized from "@/app/(dashboard)/hooks/useAuthorized";
 import { fetchProxySettings } from "@/utils/proxyUtils";
+import type { MessageType } from "@/components/chat_ui/types";
 
 interface ProxySettings {
   PROXY_BASE_URL?: string;
   LITELLM_UI_API_DOC_BASE_URL?: string | null;
 }
 
+interface ReplayPayload {
+  model: string;
+  messages: MessageType[];
+  request_id: string;
+}
+
+function readAndClearReplay(): ReplayPayload | null {
+  const raw = sessionStorage.getItem("playground_replay");
+  if (!raw) return null;
+  sessionStorage.removeItem("playground_replay");
+  try {
+    const data = JSON.parse(raw) as ReplayPayload;
+    sessionStorage.setItem("chatHistory", JSON.stringify(data.messages));
+    return data;
+  } catch {
+    return null;
+  }
+}
+
 export default function PlaygroundPage() {
   const { accessToken, userRole, userId, disabledPersonalKeyCreation, token } = useAuthorized();
   const [proxySettings, setProxySettings] = useState<ProxySettings | undefined>(undefined);
+  const [replay, setReplay] = useState<ReplayPayload | null>(() => {
+    if (typeof window === "undefined") return null;
+    return readAndClearReplay();
+  });
 
   useEffect(() => {
     const initializeProxySettings = async () => {
@@ -37,6 +62,13 @@ export default function PlaygroundPage() {
 
   return (
     <div className="h-full w-full flex flex-col">
+      {replay && (
+        <ReplayBanner
+          model={replay.model}
+          requestId={replay.request_id}
+          onDismiss={() => setReplay(null)}
+        />
+      )}
       <TabGroup className="w-full" style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
         <TabList className="mb-0">
           <Tab>Chat</Tab>
@@ -53,6 +85,7 @@ export default function PlaygroundPage() {
               userID={userId}
               disabledPersonalKeyCreation={disabledPersonalKeyCreation}
               proxySettings={proxySettings}
+              initialModel={replay?.model}
             />
           </TabPanel>
           <TabPanel className="h-full">
