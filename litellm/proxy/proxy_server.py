@@ -125,6 +125,7 @@ from litellm.types.utils import (
 from litellm.utils import (
     _invalidate_model_cost_lowercase_map,
     load_credentials_from_list,
+    reapply_runtime_model_cost_registrations,
 )
 
 if TYPE_CHECKING:
@@ -3791,6 +3792,23 @@ def resolve_complexity_router_plugins(
     )
 
 
+def _swap_in_model_cost_map(new_model_cost_map: dict) -> int:
+    """Adopt a freshly fetched cost map into this process's litellm state, return the model count"""
+    litellm.model_cost = new_model_cost_map
+    # Invalidate case-insensitive lookup map since model_cost was replaced
+    _invalidate_model_cost_lowercase_map()
+    # Repopulate provider model sets (e.g. litellm.anthropic_models) so that
+    # wildcard patterns like "anthropic/*" include any newly added models.
+    litellm.add_known_models(model_cost_map=new_model_cost_map)
+    # Counted before the re-apply below, which writes into this same dict, so the
+    # number reported describes the fetched price data alone.
+    fetched_model_count: Final = len(new_model_cost_map) if new_model_cost_map else 0
+    # The swap discards everything registered at runtime (deployment model_info,
+    # register_model overrides), so put it back on top of the fresh catalog.
+    reapply_runtime_model_cost_registrations()
+    return fetched_model_count
+
+
 class ProxyConfig:
     """
     Abstraction class on top of config loading/updating logic. Gives us one place to control all config updating logic.
@@ -6370,12 +6388,7 @@ class ProxyConfig:
 
                 model_cost_map_url = litellm.model_cost_map_url
                 new_model_cost_map = get_model_cost_map(url=model_cost_map_url)
-                litellm.model_cost = new_model_cost_map
-                # Invalidate case-insensitive lookup map since model_cost was replaced
-                _invalidate_model_cost_lowercase_map()
-                # Repopulate provider model sets (e.g. litellm.anthropic_models) so that
-                # wildcard patterns like "anthropic/*" include any newly added models.
-                litellm.add_known_models(model_cost_map=new_model_cost_map)
+                _swap_in_model_cost_map(new_model_cost_map)
 
                 # Update pod's in-memory last reload time
                 last_model_cost_map_reload = current_time.isoformat()
@@ -15587,12 +15600,7 @@ async def reload_model_cost_map(
 
         model_cost_map_url = litellm.model_cost_map_url
         new_model_cost_map = get_model_cost_map(url=model_cost_map_url)
-        litellm.model_cost = new_model_cost_map
-        # Invalidate case-insensitive lookup map since model_cost was replaced
-        _invalidate_model_cost_lowercase_map()
-        # Repopulate provider model sets (e.g. litellm.anthropic_models) so that
-        # wildcard patterns like "anthropic/*" include any newly added models.
-        litellm.add_known_models(model_cost_map=new_model_cost_map)
+        models_count = _swap_in_model_cost_map(new_model_cost_map)
 
         # Update pod's in-memory last reload time
         global last_model_cost_map_reload
@@ -15619,7 +15627,6 @@ async def reload_model_cost_map(
         )
         await invalidate_config_param("model_cost_map_reload_config")
 
-        models_count = len(new_model_cost_map) if new_model_cost_map else 0
         verbose_proxy_logger.info(f"Model cost map reloaded successfully in current pod. Models count: {models_count}")
 
         return {
