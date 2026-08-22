@@ -19,7 +19,9 @@ vi.mock("./LogDetailContent", () => ({
 }));
 
 vi.mock("./DrawerHeader", () => ({
-  DrawerHeader: () => null,
+  DrawerHeader: ({ environment, status }: { environment?: string; status: string }) => (
+    <div data-testid="drawer-header" data-status={status} data-environment={environment ?? ""} />
+  ),
 }));
 
 const makeLog = (overrides: Partial<LogEntry>): LogEntry => ({
@@ -116,5 +118,92 @@ describe("LogDetailsDrawer session sidebar sorting", () => {
     rerender(drawer(true));
 
     await waitFor(() => expect(sidebarEventNames()).toEqual(["tool-early", "llm-late", "llm-early", "tool-late"]));
+  });
+});
+
+describe("LogDetailsDrawer keyboard navigation and focus", () => {
+  const logs = [makeLog({ request_id: "first", model: "first" }), makeLog({ request_id: "second", model: "second" })];
+
+  const renderDrawer = (onClose = vi.fn(), onSelectLog = vi.fn()) => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const drawer = (open: boolean) => (
+      <QueryClientProvider client={queryClient}>
+        <button type="button">open drawer</button>
+        <LogDetailsDrawer
+          open={open}
+          onClose={onClose}
+          logEntry={logs[0]}
+          allLogs={logs}
+          onSelectLog={onSelectLog}
+          accessToken="token"
+        />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(drawer(false));
+    return { rerender, drawer, onClose, onSelectLog };
+  };
+
+  it("renders a right-side dialog and derives the header status and environment from metadata", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <LogDetailsDrawer
+          open
+          onClose={() => {}}
+          logEntry={makeLog({ metadata: { status: "failure", user_api_key_team_alias: "staging" } })}
+          accessToken="token"
+        />
+      </QueryClientProvider>,
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveAttribute("data-side", "right");
+    const header = screen.getByTestId("drawer-header");
+    expect(header).toHaveAttribute("data-status", "failure");
+    expect(header).toHaveAttribute("data-environment", "staging");
+  });
+
+  it("leaves the environment empty instead of defaulting it when the team alias is missing", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <LogDetailsDrawer open onClose={() => {}} logEntry={makeLog({ metadata: {} })} accessToken="token" />
+      </QueryClientProvider>,
+    );
+
+    await screen.findByRole("dialog");
+    const header = screen.getByTestId("drawer-header");
+    expect(header).toHaveAttribute("data-status", "success");
+    expect(header).toHaveAttribute("data-environment", "");
+  });
+
+  it("invokes onSelectLog for J (next) and K (previous) while open", async () => {
+    const { rerender, drawer, onSelectLog } = renderDrawer();
+    rerender(drawer(true));
+    await screen.findByRole("dialog");
+
+    fireEvent.keyDown(window, { key: "j" });
+    expect(onSelectLog).toHaveBeenLastCalledWith(logs[1]);
+
+    fireEvent.keyDown(window, { key: "K" });
+    expect(onSelectLog).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes on Escape and returns focus to the element focused before opening", async () => {
+    const { rerender, drawer, onClose } = renderDrawer();
+    const trigger = screen.getByRole("button", { name: "open drawer" });
+    trigger.focus();
+    expect(trigger).toHaveFocus();
+
+    rerender(drawer(true));
+    const dialog = await screen.findByRole("dialog");
+    await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
+
+    fireEvent.keyDown(document.activeElement ?? window, { key: "Escape" });
+    expect(onClose).toHaveBeenCalled();
+
+    rerender(drawer(false));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(trigger).toHaveFocus());
   });
 });

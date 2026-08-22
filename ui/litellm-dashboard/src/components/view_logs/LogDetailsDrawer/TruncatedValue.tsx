@@ -1,35 +1,20 @@
-import { Typography, Tooltip } from "antd";
-import { DEFAULT_MAX_WIDTH, FONT_FAMILY_MONO, FONT_SIZE_SMALL } from "./constants";
-
-const { Text } = Typography;
+import CopyButton from "@/components/shared/CopyButton";
+import { cn } from "@/lib/cva.config";
 
 interface TruncatedValueProps {
   value?: string;
-  maxWidth?: number;
+  className?: string;
 }
 
-/**
- * Displays a truncated value with tooltip and copy functionality.
- * Useful for displaying long IDs, URLs, or other text that may overflow.
- */
-export function TruncatedValue({ value, maxWidth = DEFAULT_MAX_WIDTH }: TruncatedValueProps) {
-  if (!value) return <Text type="secondary">-</Text>;
+export function TruncatedValue({ value, className = "max-w-[180px]" }: TruncatedValueProps) {
+  if (!value) return <span className="text-muted-foreground">-</span>;
 
   return (
-    <Tooltip title={value}>
-      <Text
-        copyable={{ text: value, tooltips: ["Copy", "Copied!"] }}
-        style={{
-          maxWidth,
-          display: "inline-block",
-          verticalAlign: "bottom",
-          fontFamily: FONT_FAMILY_MONO,
-          fontSize: FONT_SIZE_SMALL,
-        }}
-        ellipsis
-      >
+    <span className="inline-flex max-w-full items-center gap-1 align-bottom">
+      <span title={value} className={cn("truncate font-mono text-xs text-foreground", className)}>
         {value}
-      </Text>
-    </Tooltip>
+      </span>
+      <CopyButton value={value} label="Copy" iconClassName="size-3" />
+    </span>
   );
 }

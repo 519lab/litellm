@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { RealtimePrettyView, isRealtimeResponse } from "./RealtimePrettyView";
@@ -333,13 +333,13 @@ describe("RealtimePrettyView", () => {
     const transcript = screen.getByText("Hello! How's your day going?");
     expect(transcript).toBeVisible();
 
-    const outputHeader = screen.getByText("Output").closest("div");
-    if (outputHeader) {
-      await user.click(outputHeader);
-      await waitFor(() => {
-        expect(transcript).not.toBeVisible();
-      });
-    }
+    const outputToggle = screen.getByRole("button", { name: /^Output/ });
+    expect(outputToggle).toHaveAttribute("aria-expanded", "true");
+    await user.click(outputToggle);
+    await waitFor(() => {
+      expect(transcript).not.toBeVisible();
+    });
+    expect(outputToggle).toHaveAttribute("aria-expanded", "false");
   });
 
   it("should display token breakdown tags when input_token_details are present", async () => {

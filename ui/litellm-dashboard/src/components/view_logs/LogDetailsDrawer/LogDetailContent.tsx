@@ -1,7 +1,11 @@
 import { useState } from "react";
-import { Badge } from "@/components/ui/badge";
-import { Typography, Descriptions, Card, Tag, Tabs, Alert, Collapse, Radio, Space, Spin } from "antd";
 import moment from "moment";
+import { ChevronDown, CircleAlert } from "lucide-react";
+import CopyButton from "@/components/shared/CopyButton";
+import { Badge } from "@/components/ui/badge";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { UiLoadingSpinner } from "@/components/ui/ui-loading-spinner";
 import { LogEntry } from "../columns";
 import { formatNumberWithCommas } from "@/utils/dataUtils";
 import GuardrailViewer from "../GuardrailViewer/GuardrailViewer";
@@ -12,6 +16,7 @@ import { VectorStoreViewer } from "../VectorStoreViewer";
 import { TruncatedValue } from "./TruncatedValue";
 import { TokenFlow } from "./TokenFlow";
 import { JsonViewer } from "./JsonViewer";
+import { SegmentedToggle } from "./SegmentedToggle";
 import {
   formatData,
   checkHasMessages,
@@ -21,65 +26,50 @@ import {
   getGuardrailLabel,
   checkHasVectorStoreData,
 } from "./utils";
-import {
-  DRAWER_CONTENT_PADDING,
-  API_BASE_MAX_WIDTH,
-  METADATA_MAX_HEIGHT,
-  TAB_REQUEST,
-  TAB_RESPONSE,
-  FONT_SIZE_SMALL,
-  FONT_FAMILY_MONO,
-  SPACING_XLARGE,
-  SPACING_MEDIUM,
-} from "./constants";
 import { ToolsSection } from "../ToolsSection";
 import { PrettyMessagesView } from "./PrettyMessagesView";
 
-const { Text } = Typography;
-
 export interface LogDetailContentProps {
   logEntry: LogEntry;
-  /** When true, log details (messages/response) are still being lazy-loaded. */
   isLoadingDetails?: boolean;
   accessToken?: string | null;
 }
 
-/**
- * The scrollable detail content for a single log entry.
- * Renders request details, metrics, cost breakdown, request/response,
- * guardrails, vector store data, and metadata.
- *
- * Designed to be placed inside LogDetailsDrawer's right panel so it can
- * be reused for both single-log and session-mode views.
- */
+interface ErrorInformation {
+  error_code?: string;
+  error_message?: string;
+  error_class?: string;
+}
+
+type LogMetadata = NonNullable<LogEntry["metadata"]>;
+
+const CARD_CLASS = "mb-6 w-full max-w-full overflow-hidden rounded-lg border border-border bg-card";
+const CARD_TITLE_CLASS = "text-base font-medium text-foreground";
+const TRIGGER_CLASS =
+  "group flex items-center gap-2 rounded-md text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50";
+const CHEVRON_CLASS = "size-4 text-muted-foreground transition-transform group-data-panel-open:rotate-180";
+
 export function LogDetailContent({ logEntry, isLoadingDetails = false, accessToken }: LogDetailContentProps) {
-  const metadata = logEntry.metadata || {};
+  const metadata: LogMetadata = logEntry.metadata || {};
   const hasError = metadata.status === "failure";
   const hasCost = (logEntry.spend ?? 0) > 0;
-  const errorInfo = hasError ? metadata.error_information : null;
+  const errorInfo: ErrorInformation | null = hasError ? metadata.error_information ?? null : null;
 
   const hasMessages = checkHasMessages(logEntry.messages);
   const hasResponse = checkHasResponse(logEntry.response);
-  // Don't show "missing data" warning while details are still loading
   const missingData = !hasMessages && !hasResponse && !hasError && !isLoadingDetails;
 
-  // Guardrail data
-  const guardrailInfo = metadata?.guardrail_information;
+  const guardrailInfo = metadata.guardrail_information;
   const guardrailEntries = normalizeGuardrailEntries(guardrailInfo);
   const hasGuardrailData = guardrailEntries.length > 0;
   const totalMaskedEntities = calculateTotalMaskedEntities(guardrailEntries);
   const primaryGuardrailLabel = getGuardrailLabel(guardrailEntries);
 
-  // LLM Judge data
-  const evalInfo = metadata?.eval_information;
+  const evalInfo = metadata.eval_information;
   const hasEvalData = evalInfo != null;
-
-  // Vector store data
   const hasVectorStoreData = checkHasVectorStoreData(metadata);
 
-  const getRawRequest = () => {
-    return formatData(logEntry.proxy_server_request || logEntry.messages);
-  };
+  const getRawRequest = () => formatData(logEntry.proxy_server_request || logEntry.messages);
 
   const getFormattedResponse = () => {
     if (hasError && errorInfo) {
@@ -96,79 +86,61 @@ export function LogDetailContent({ logEntry, isLoadingDetails = false, accessTok
   };
 
   return (
-    <div style={{ padding: `${DRAWER_CONTENT_PADDING} ${DRAWER_CONTENT_PADDING} 0` }}>
-      {/* Error Alert */}
-      {hasError && errorInfo && (
-        <Alert
-          type="error"
-          showIcon
-          message="Request Failed"
-          description={<ErrorDescription errorInfo={errorInfo} />}
-          className="mb-6"
-        />
-      )}
+    <div className="px-6 pt-6">
+      {hasError && errorInfo && <ErrorAlert errorInfo={errorInfo} />}
 
-      {/* Tags */}
       {logEntry.request_tags && Object.keys(logEntry.request_tags).length > 0 && (
         <TagsSection tags={logEntry.request_tags} />
       )}
 
-      {/* Request Details */}
-      <div className="bg-white rounded-lg shadow-sm w-full max-w-full overflow-hidden mb-6">
-        <Card title="Request Details" size="small" bordered={false} style={{ marginBottom: 0 }}>
-          <Descriptions column={2} size="small">
-            <Descriptions.Item label="Model">{logEntry.model}</Descriptions.Item>
-            <Descriptions.Item label="Provider">{logEntry.custom_llm_provider || "-"}</Descriptions.Item>
-            <Descriptions.Item label="Call Type">{logEntry.call_type}</Descriptions.Item>
-            <Descriptions.Item label="Model ID">
-              <TruncatedValue value={logEntry.model_id} />
-            </Descriptions.Item>
-            <Descriptions.Item label="API Base">
-              <TruncatedValue value={logEntry.api_base} maxWidth={API_BASE_MAX_WIDTH} />
-            </Descriptions.Item>
-            {logEntry.requester_ip_address && (
-              <Descriptions.Item label="IP Address">{logEntry.requester_ip_address}</Descriptions.Item>
-            )}
-            {hasGuardrailData && (
-              <Descriptions.Item label="Guardrail">
-                <GuardrailLabel label={primaryGuardrailLabel} maskedCount={totalMaskedEntities} />
-              </Descriptions.Item>
-            )}
-          </Descriptions>
-        </Card>
-      </div>
+      <section className={CARD_CLASS}>
+        <h3 className={`border-b border-border px-4 py-2 ${CARD_TITLE_CLASS}`}>Request Details</h3>
+        <dl className="grid grid-cols-1 gap-x-6 gap-y-3 px-4 py-3 sm:grid-cols-2">
+          <DetailItem label="Model">{logEntry.model}</DetailItem>
+          <DetailItem label="Provider">{logEntry.custom_llm_provider || "-"}</DetailItem>
+          <DetailItem label="Call Type">{logEntry.call_type}</DetailItem>
+          <DetailItem label="Model ID">
+            <TruncatedValue value={logEntry.model_id} />
+          </DetailItem>
+          <DetailItem label="API Base">
+            <TruncatedValue value={logEntry.api_base} className="max-w-[200px]" />
+          </DetailItem>
+          {logEntry.requester_ip_address && <DetailItem label="IP Address">{logEntry.requester_ip_address}</DetailItem>}
+          {hasGuardrailData && (
+            <DetailItem label="Guardrail">
+              <GuardrailLabel label={primaryGuardrailLabel} maskedCount={totalMaskedEntities} />
+            </DetailItem>
+          )}
+        </dl>
+      </section>
 
-      {/* Metrics */}
       <MetricsSection logEntry={logEntry} metadata={metadata} />
 
       {hasCost && (
         <CostBreakdownViewer
-          costBreakdown={metadata?.cost_breakdown}
+          costBreakdown={metadata.cost_breakdown}
           totalSpend={logEntry.spend ?? 0}
           promptTokens={logEntry.prompt_tokens}
           completionTokens={logEntry.completion_tokens}
           cacheHit={logEntry.cache_hit}
-          rawInputTokens={metadata?.additional_usage_values?.prompt_tokens_details?.text_tokens}
-          cacheReadTokens={metadata?.additional_usage_values?.cache_read_input_tokens}
-          cacheCreationTokens={metadata?.additional_usage_values?.cache_creation_input_tokens}
+          rawInputTokens={metadata.additional_usage_values?.prompt_tokens_details?.text_tokens}
+          cacheReadTokens={metadata.additional_usage_values?.cache_read_input_tokens}
+          cacheCreationTokens={metadata.additional_usage_values?.cache_creation_input_tokens}
         />
       )}
 
-      {/* Tools */}
       <ToolsSection log={logEntry} />
 
-      {/* Configuration Info Message */}
       {missingData && (
         <div className="mb-6">
           <ConfigInfoMessage show={missingData} />
         </div>
       )}
 
-      {/* Request/Response JSON */}
       {isLoadingDetails ? (
-        <div className="bg-white rounded-lg shadow-sm w-full max-w-full overflow-hidden mb-6 p-8 text-center">
-          <Spin size="default" />
-          <div style={{ marginTop: 8, color: "#999" }}>Loading request &amp; response data...</div>
+        <div role="status" className={`${CARD_CLASS} flex flex-col items-center gap-2 p-8 text-center`}>
+          <UiLoadingSpinner className="size-6 text-muted-foreground" />
+          <span className="text-sm text-muted-foreground">Loading request &amp; response data...</span>
         </div>
       ) : (
         <RequestResponseSection
@@ -180,7 +152,6 @@ export function LogDetailContent({ logEntry, isLoadingDetails = false, accessTok
         />
       )}
 
-      {/* Guardrail Data */}
       {hasGuardrailData && (
         <div id="guardrail-section">
           <GuardrailViewer
@@ -197,85 +168,81 @@ export function LogDetailContent({ logEntry, isLoadingDetails = false, accessTok
         </div>
       )}
 
-      {/* LLM Judge Results */}
       {hasEvalData && <EvalViewer data={evalInfo} />}
 
-      {/* Vector Store Data */}
       {hasVectorStoreData && <VectorStoreViewer data={metadata.vector_store_request_metadata} />}
 
-      {/* Metadata */}
       {logEntry.metadata && Object.keys(logEntry.metadata).length > 0 && (
         <MetadataSection metadata={logEntry.metadata} />
       )}
-
-      {/* Bottom spacing */}
-      <div style={{ height: DRAWER_CONTENT_PADDING }} />
     </div>
   );
 }
 
-// ============================================================================
-// Helper Components
-// ============================================================================
-
-function ErrorDescription({ errorInfo }: { errorInfo: any }) {
+function DetailItem({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div>
-      {errorInfo.error_code && (
-        <div>
-          <Text strong>Error Code:</Text> {errorInfo.error_code}
-        </div>
-      )}
-      {errorInfo.error_message && (
-        <div>
-          <Text strong>Message:</Text> {errorInfo.error_message}
-        </div>
-      )}
+    <div className="flex min-w-0 flex-col gap-0.5">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="truncate text-sm text-foreground">{children}</dd>
     </div>
   );
 }
 
-function TagsSection({ tags }: { tags: Record<string, any> }) {
+function ErrorAlert({ errorInfo }: { errorInfo: ErrorInformation }) {
   return (
-    <div className="bg-white rounded-lg shadow-sm w-full max-w-full overflow-hidden p-4 mb-6">
-      <Text strong style={{ display: "block", marginBottom: 8, fontSize: 16 }}>
-        Tags
-      </Text>
-      <Space size={SPACING_MEDIUM} wrap>
+    <div role="alert" className="mb-6 flex gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm">
+      <CircleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive" />
+      <div className="min-w-0 text-foreground">
+        <div className="font-medium">Request Failed</div>
+        {errorInfo.error_code && (
+          <div>
+            <span className="font-semibold">Error Code:</span> {errorInfo.error_code}
+          </div>
+        )}
+        {errorInfo.error_message && (
+          <div className="break-words">
+            <span className="font-semibold">Message:</span> {errorInfo.error_message}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TagsSection({ tags }: { tags: Record<string, unknown> }) {
+  return (
+    <section className={`${CARD_CLASS} p-4`}>
+      <h3 className={`mb-2 ${CARD_TITLE_CLASS}`}>Tags</h3>
+      <div className="flex flex-wrap gap-2">
         {Object.entries(tags).map(([key, value]) => (
-          <Tag key={key}>
+          <Badge key={key} variant="outline">
             {key}: {String(value)}
-          </Tag>
+          </Badge>
         ))}
-      </Space>
-    </div>
+      </div>
+    </section>
   );
 }
+
+const scrollToGuardrails = () => {
+  document.getElementById("guardrail-section")?.scrollIntoView({ behavior: "smooth" });
+};
 
 function GuardrailLabel({ label, maskedCount }: { label: string; maskedCount: number }) {
-  const handleClick = () => {
-    const el = document.getElementById("guardrail-section");
-    if (el) el.scrollIntoView({ behavior: "smooth" });
-  };
-
   return (
-    <Space size={SPACING_MEDIUM}>
-      <a onClick={handleClick} style={{ cursor: "pointer" }}>
+    <span className="inline-flex items-center gap-2">
+      <button type="button" onClick={scrollToGuardrails} className="text-primary underline-offset-4 hover:underline">
         {label}
-      </a>
-      {maskedCount > 0 && <Tag color="blue">{maskedCount} masked</Tag>}
-    </Space>
+      </button>
+      {maskedCount > 0 && <Badge variant="secondary">{maskedCount} masked</Badge>}
+    </span>
   );
 }
 
-/**
- * Uncached input token count (billable non-cache prompt text), aligned with Cost Breakdown "Input".
- * Same sources as CostBreakdownViewer rawInputTokens.
- */
-function getUncachedInputTextTokens(metadata: Record<string, any>): number | undefined {
+function getUncachedInputTextTokens(metadata: LogMetadata): number | undefined {
   const raw =
-    metadata?.additional_usage_values?.prompt_tokens_details?.text_tokens ??
-    metadata?.usage_object?.prompt_tokens_details?.text_tokens;
+    metadata.additional_usage_values?.prompt_tokens_details?.text_tokens ??
+    metadata.usage_object?.prompt_tokens_details?.text_tokens;
   if (raw === undefined || raw === null) return undefined;
   const n = Number(raw);
   return Number.isFinite(n) ? n : undefined;
@@ -292,15 +259,15 @@ interface Metric {
   readonly value: React.ReactNode;
 }
 
-function MetricsSection({ logEntry, metadata }: { logEntry: LogEntry; metadata: Record<string, any> }) {
+function MetricsSection({ logEntry, metadata }: { logEntry: LogEntry; metadata: LogMetadata }) {
   const completionStartTime = logEntry.completionStartTime;
   const ttftMs =
     completionStartTime && completionStartTime !== logEntry.endTime
       ? new Date(completionStartTime).getTime() - new Date(logEntry.startTime).getTime()
       : null;
 
-  const cacheReadTokens: number = metadata?.additional_usage_values?.cache_read_input_tokens ?? 0;
-  const cacheCreationTokens: number = metadata?.additional_usage_values?.cache_creation_input_tokens ?? 0;
+  const cacheReadTokens: number = metadata.additional_usage_values?.cache_read_input_tokens ?? 0;
+  const cacheCreationTokens: number = metadata.additional_usage_values?.cache_creation_input_tokens ?? 0;
   const hasCacheActivity = !!logEntry.cache_hit || cacheReadTokens > 0;
   const cacheHitValue = String(logEntry.cache_hit ?? "None");
   const cacheHitVariant = cacheHitValue.toLowerCase() === "true" ? "default" : "outline";
@@ -309,9 +276,9 @@ function MetricsSection({ logEntry, metadata }: { logEntry: LogEntry; metadata: 
   const showAnthropicMessagesInputOutput =
     logEntry.call_type === "anthropic_messages" && uncachedInputTokens !== undefined;
 
-  const retriesValue = formatRetries(metadata?.attempted_retries, metadata?.max_retries);
+  const retriesValue = formatRetries(metadata.attempted_retries, metadata.max_retries);
 
-  const overheadMs: number | null | undefined = metadata?.litellm_overhead_time_ms;
+  const overheadMs: number | null | undefined = metadata.litellm_overhead_time_ms;
 
   const metrics: readonly Metric[] = [
     ...(showAnthropicMessagesInputOutput
@@ -355,8 +322,8 @@ function MetricsSection({ logEntry, metadata }: { logEntry: LogEntry; metadata: 
   ];
 
   return (
-    <section className="mb-6 w-full max-w-full overflow-hidden rounded-lg border border-border bg-background">
-      <h3 className="border-b border-border px-4 py-2 text-sm font-medium text-foreground">Metrics</h3>
+    <section className={CARD_CLASS}>
+      <h3 className={`border-b border-border px-4 py-2 ${CARD_TITLE_CLASS}`}>Metrics</h3>
       <dl className="grid grid-cols-1 gap-x-6 gap-y-3 px-4 py-3 sm:grid-cols-2 md:grid-cols-3">
         {metrics.map((metric) => (
           <div key={metric.label} className="flex min-w-0 flex-col gap-0.5">
@@ -369,11 +336,19 @@ function MetricsSection({ logEntry, metadata }: { logEntry: LogEntry; metadata: 
   );
 }
 
+type ViewMode = "pretty" | "json";
+type JsonTab = "request" | "response";
+
+const VIEW_MODE_OPTIONS = [
+  { value: "pretty", label: "Pretty" },
+  { value: "json", label: "JSON" },
+] as const;
+
 interface RequestResponseSectionProps {
   hasResponse: boolean;
   hasError: boolean;
-  getRawRequest: () => any;
-  getFormattedResponse: () => any;
+  getRawRequest: () => unknown;
+  getFormattedResponse: () => unknown;
   logEntry: LogEntry;
 }
 
@@ -384,13 +359,10 @@ function RequestResponseSection({
   getFormattedResponse,
   logEntry,
 }: RequestResponseSectionProps) {
-  const [activeTab, setActiveTab] = useState<typeof TAB_REQUEST | typeof TAB_RESPONSE>(TAB_REQUEST);
-  const [viewMode, setViewMode] = useState<"pretty" | "json">("pretty");
+  const [activeTab, setActiveTab] = useState<JsonTab>("request");
+  const [viewMode, setViewMode] = useState<ViewMode>("pretty");
 
-  const getCopyText = () => {
-    const data = activeTab === TAB_REQUEST ? getRawRequest() : getFormattedResponse();
-    return JSON.stringify(data, null, 2);
-  };
+  const copyText = JSON.stringify(activeTab === "request" ? getRawRequest() : getFormattedResponse(), null, 2);
 
   const totalSpend = logEntry.spend ?? 0;
   const promptTokens = logEntry.prompt_tokens || 0;
@@ -398,182 +370,104 @@ function RequestResponseSection({
   const totalTokens = promptTokens + completionTokens;
   const costBreakdown = logEntry.metadata?.cost_breakdown;
   const useCostBreakdown = costBreakdown?.input_cost !== undefined && costBreakdown?.output_cost !== undefined;
-  const inputCost = useCostBreakdown
-    ? costBreakdown!.input_cost ?? 0
-    : totalTokens > 0
-      ? (totalSpend * promptTokens) / totalTokens
-      : 0;
-  const outputCost = useCostBreakdown
-    ? costBreakdown!.output_cost ?? 0
-    : totalTokens > 0
-      ? (totalSpend * completionTokens) / totalTokens
-      : 0;
+  const proportionalCost = (tokens: number) => (totalTokens > 0 ? (totalSpend * tokens) / totalTokens : 0);
+  const inputCost = useCostBreakdown ? costBreakdown.input_cost ?? 0 : proportionalCost(promptTokens);
+  const outputCost = useCostBreakdown ? costBreakdown.output_cost ?? 0 : proportionalCost(completionTokens);
 
   return (
-    <div className="bg-white rounded-lg shadow-sm w-full max-w-full overflow-hidden mb-6">
-      <Collapse
-        defaultActiveKey={["1"]}
-        expandIconPosition="start"
-        items={[
-          {
-            key: "1",
-            label: (
-              <div
-                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}
-                onClick={(e) => {
-                  const target = e.target as HTMLElement;
-                  if (target.closest(".ant-radio-group")) {
-                    e.stopPropagation();
-                  }
-                }}
-              >
-                <h3 className="text-lg font-medium text-gray-900" style={{ margin: 0 }}>
-                  Request & Response
-                </h3>
-                <Radio.Group size="small" value={viewMode} onChange={(e) => setViewMode(e.target.value)}>
-                  <Radio.Button value="pretty">Pretty</Radio.Button>
-                  <Radio.Button value="json">JSON</Radio.Button>
-                </Radio.Group>
-              </div>
-            ),
-            children: (
-              <div>
-                {viewMode === "pretty" ? (
-                  <PrettyMessagesView
-                    request={getRawRequest()}
-                    response={getFormattedResponse()}
-                    metrics={{
-                      prompt_tokens: promptTokens,
-                      completion_tokens: completionTokens,
-                      input_cost: inputCost,
-                      output_cost: outputCost,
-                    }}
-                  />
-                ) : (
-                  <Tabs
-                    activeKey={activeTab}
-                    onChange={(key) => setActiveTab(key as typeof TAB_REQUEST | typeof TAB_RESPONSE)}
-                    tabBarExtraContent={
-                      <Text
-                        copyable={{
-                          text: getCopyText(),
-                          tooltips: ["Copy JSON", "Copied!"],
-                        }}
-                        disabled={activeTab === TAB_RESPONSE && !hasResponse && !hasError}
-                      />
-                    }
-                    items={[
-                      {
-                        key: TAB_REQUEST,
-                        label: "Request",
-                        children: (
-                          <div style={{ paddingTop: SPACING_XLARGE, paddingBottom: SPACING_XLARGE }}>
-                            <JsonViewer data={getRawRequest()} mode="formatted" />
-                          </div>
-                        ),
-                      },
-                      {
-                        key: TAB_RESPONSE,
-                        label: "Response",
-                        children: (
-                          <div style={{ paddingTop: SPACING_XLARGE, paddingBottom: SPACING_XLARGE }}>
-                            {hasResponse || hasError ? (
-                              <JsonViewer data={getFormattedResponse()} mode="formatted" />
-                            ) : (
-                              <div style={{ textAlign: "center", padding: 20, color: "#999", fontStyle: "italic" }}>
-                                Response data not available
-                              </div>
-                            )}
-                          </div>
-                        ),
-                      },
-                    ]}
-                  />
-                )}
-              </div>
-            ),
-          },
-        ]}
-      />
-    </div>
+    <Collapsible defaultOpen className={CARD_CLASS}>
+      <div className="flex items-center justify-between gap-2 px-4 py-3">
+        <CollapsibleTrigger className={TRIGGER_CLASS}>
+          <ChevronDown aria-hidden className={CHEVRON_CLASS} />
+          <h3 className={CARD_TITLE_CLASS}>Request &amp; Response</h3>
+        </CollapsibleTrigger>
+        <SegmentedToggle label="View mode" options={VIEW_MODE_OPTIONS} value={viewMode} onChange={setViewMode} />
+      </div>
+      <CollapsibleContent className="border-t border-border px-4 py-3">
+        {viewMode === "pretty" ? (
+          <PrettyMessagesView
+            request={getRawRequest()}
+            response={getFormattedResponse()}
+            metrics={{
+              prompt_tokens: promptTokens,
+              completion_tokens: completionTokens,
+              input_cost: inputCost,
+              output_cost: outputCost,
+            }}
+          />
+        ) : (
+          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as JsonTab)}>
+            <div className="flex items-center justify-between gap-2">
+              <TabsList>
+                <TabsTrigger value="request">Request</TabsTrigger>
+                <TabsTrigger value="response">Response</TabsTrigger>
+              </TabsList>
+              <CopyButton value={copyText} label="Copy JSON" />
+            </div>
+            <TabsContent value="request" className="py-4">
+              <JsonViewer data={getRawRequest()} />
+            </TabsContent>
+            <TabsContent value="response" className="py-4">
+              {hasResponse || hasError ? (
+                <JsonViewer data={getFormattedResponse()} />
+              ) : (
+                <div className="p-5 text-center italic text-muted-foreground">Response data not available</div>
+              )}
+            </TabsContent>
+          </Tabs>
+        )}
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
-export function GuardrailJumpLink({ guardrailEntries }: { guardrailEntries: any[] }) {
+export function GuardrailJumpLink({
+  guardrailEntries,
+}: {
+  guardrailEntries: ReturnType<typeof normalizeGuardrailEntries>;
+}) {
   const allPassed = guardrailEntries.every((e) => {
     const status = e?.guardrail_status || e?.status;
     return status === "pass" || status === "passed" || status === "success";
   });
-
-  const handleClick = () => {
-    const el = document.getElementById("guardrail-section");
-    if (el) el.scrollIntoView({ behavior: "smooth" });
-  };
+  const count = guardrailEntries.length;
 
   return (
-    <div style={{ textAlign: "left", marginBottom: 12 }}>
-      <div
-        onClick={handleClick}
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
-          padding: "4px 12px",
-          borderRadius: 16,
-          cursor: "pointer",
-          fontSize: 13,
-          fontWeight: 500,
-          backgroundColor: allPassed ? "#f0fdf4" : "#fef2f2",
-          color: allPassed ? "#15803d" : "#b91c1c",
-          border: `1px solid ${allPassed ? "#bbf7d0" : "#fecaca"}`,
-        }}
+    <div className="mb-3">
+      <button
+        type="button"
+        onClick={scrollToGuardrails}
+        className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[13px] font-medium outline-none focus-visible:ring-3 focus-visible:ring-ring/50 ${
+          allPassed
+            ? "border-border bg-muted text-foreground"
+            : "border-destructive/30 bg-destructive/10 text-destructive"
+        }`}
       >
-        {allPassed ? "\u2713" : "\u2717"} {guardrailEntries.length} guardrail{guardrailEntries.length !== 1 ? "s" : ""}{" "}
-        evaluated
-        <span style={{ fontSize: 11, opacity: 0.7 }}>{"\u2193"}</span>
-      </div>
+        {allPassed ? "✓" : "✗"} {count} guardrail{count !== 1 ? "s" : ""} evaluated
+        <span aria-hidden className="text-[11px] opacity-70">
+          {"↓"}
+        </span>
+      </button>
     </div>
   );
 }
 
-function MetadataSection({ metadata }: { metadata: Record<string, any> }) {
+function MetadataSection({ metadata }: { metadata: LogMetadata }) {
+  const json = JSON.stringify(metadata, null, 2);
   return (
-    <div className="bg-white rounded-lg shadow-sm w-full max-w-full overflow-hidden mb-6">
-      <Collapse
-        defaultActiveKey={["1"]}
-        expandIconPosition="start"
-        items={[
-          {
-            key: "1",
-            label: <h3 className="text-lg font-medium text-gray-900">Metadata</h3>,
-            children: (
-              <div>
-                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
-                  <Text
-                    copyable={{
-                      text: JSON.stringify(metadata, null, 2),
-                      tooltips: ["Copy Metadata", "Copied!"],
-                    }}
-                  />
-                </div>
-                <pre
-                  style={{
-                    maxHeight: METADATA_MAX_HEIGHT,
-                    overflowY: "auto",
-                    fontSize: FONT_SIZE_SMALL,
-                    fontFamily: FONT_FAMILY_MONO,
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-all",
-                    margin: 0,
-                  }}
-                >
-                  {JSON.stringify(metadata, null, 2)}
-                </pre>
-              </div>
-            ),
-          },
-        ]}
-      />
-    </div>
+    <Collapsible defaultOpen className={CARD_CLASS}>
+      <div className="flex items-center justify-between gap-2 px-4 py-3">
+        <CollapsibleTrigger className={TRIGGER_CLASS}>
+          <ChevronDown aria-hidden className={CHEVRON_CLASS} />
+          <h3 className={CARD_TITLE_CLASS}>Metadata</h3>
+        </CollapsibleTrigger>
+        <CopyButton value={json} label="Copy metadata" />
+      </div>
+      <CollapsibleContent className="border-t border-border px-4 py-3">
+        <pre className="max-h-[300px] overflow-auto whitespace-pre-wrap break-all font-mono text-xs text-foreground">
+          {json}
+        </pre>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }

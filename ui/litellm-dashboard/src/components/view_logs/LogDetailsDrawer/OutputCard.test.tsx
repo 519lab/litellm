@@ -66,16 +66,10 @@ describe("OutputCard", () => {
   it("should copy message content when copy button is clicked", async () => {
     render(<OutputCard message={mockMessage} />);
 
-    const copyButtons = screen.getAllByRole("button");
-    const copyButton = copyButtons.find((button) => {
-      const icon = button.querySelector('[aria-label="copy"]');
-      return icon !== null;
-    });
-
-    expect(copyButton).toBeInTheDocument();
+    const copyButton = screen.getByRole("button", { name: "Copy output" });
 
     await act(async () => {
-      fireEvent.click(copyButton!);
+      fireEvent.click(copyButton);
     });
 
     await waitFor(() => {
@@ -88,14 +82,8 @@ describe("OutputCard", () => {
 
     render(<OutputCard message={null} />);
 
-    const copyButtons = screen.getAllByRole("button");
-    const copyButton = copyButtons.find((button) => {
-      const icon = button.querySelector('[aria-label="copy"]');
-      return icon !== null;
-    });
-
-    expect(copyButton).toBeInTheDocument();
-    await user.click(copyButton!);
+    const copyButton = screen.getByRole("button", { name: "Copy output" });
+    await user.click(copyButton);
 
     await waitFor(() => {
       expect(mockWriteText).not.toHaveBeenCalled();
@@ -106,19 +94,17 @@ describe("OutputCard", () => {
     const user = userEvent.setup();
     render(<OutputCard message={mockMessage} />);
 
-    const header = screen.getByText("Output").closest("div");
-    expect(header).toBeInTheDocument();
+    const header = screen.getByRole("button", { expanded: true });
 
     const content = screen.getByText("This is a test response");
     expect(content).toBeInTheDocument();
     expect(content).toBeVisible();
 
-    if (header) {
-      await user.click(header);
-      await waitFor(() => {
-        expect(content).not.toBeVisible();
-      });
-    }
+    await user.click(header);
+    await waitFor(() => {
+      expect(content).not.toBeVisible();
+    });
+    expect(header).toHaveAttribute("aria-expanded", "false");
   });
 
   it("should handle empty content in message", () => {
@@ -156,18 +142,16 @@ describe("OutputCard", () => {
     const user = userEvent.setup();
     render(<OutputCard message={null} />);
 
-    const header = screen.getByText("Output").closest("div");
-    expect(header).toBeInTheDocument();
+    const header = screen.getByRole("button", { expanded: true });
 
     const noDataText = screen.getByText("No response data available");
     expect(noDataText).toBeInTheDocument();
     expect(noDataText).toBeVisible();
 
-    if (header) {
-      await user.click(header);
-      await waitFor(() => {
-        expect(noDataText).not.toBeVisible();
-      });
-    }
+    await user.click(header);
+    await waitFor(() => {
+      expect(noDataText).not.toBeVisible();
+    });
+    expect(header).toHaveAttribute("aria-expanded", "false");
   });
 });

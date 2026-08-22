@@ -117,16 +117,10 @@ describe("InputCard", () => {
 
     render(<InputCard messages={messages} />);
 
-    const copyButtons = screen.getAllByRole("button");
-    const copyButton = copyButtons.find((button) => {
-      const icon = button.querySelector('[aria-label="copy"]');
-      return icon !== null;
-    });
-
-    expect(copyButton).toBeInTheDocument();
+    const copyButton = screen.getByRole("button", { name: "Copy input" });
 
     await act(async () => {
-      fireEvent.click(copyButton!);
+      fireEvent.click(copyButton);
     });
 
     await waitFor(() => {
@@ -138,19 +132,17 @@ describe("InputCard", () => {
     const user = userEvent.setup();
     render(<InputCard messages={mockMessages} />);
 
-    const header = screen.getByText("Input").closest("div");
-    expect(header).toBeInTheDocument();
+    const header = screen.getByRole("button", { expanded: true });
 
     const content = screen.getByText("Hello, how are you?");
     expect(content).toBeInTheDocument();
     expect(content).toBeVisible();
 
-    if (header) {
-      await user.click(header);
-      await waitFor(() => {
-        expect(content).not.toBeVisible();
-      });
-    }
+    await user.click(header);
+    await waitFor(() => {
+      expect(content).not.toBeVisible();
+    });
+    expect(header).toHaveAttribute("aria-expanded", "false");
   });
 
   it("should handle messages without system message", () => {
@@ -215,11 +207,6 @@ describe("InputCard", () => {
       },
     ];
     render(<InputCard messages={messages} />);
-    const copyButtons = screen.getAllByRole("button");
-    const copyButton = copyButtons.find((button) => {
-      const icon = button.querySelector('[aria-label="copy"]');
-      return icon !== null;
-    });
-    expect(copyButton).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy input" })).toBeInTheDocument();
   });
 });

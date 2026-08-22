@@ -1,22 +1,8 @@
-/**
- * RealtimePrettyView - Structured pretty view for OpenAI Realtime API logs
- * Displays session config, conversation turns, and token usage
- * in a readable format instead of raw JSON.
- */
-
 import { useState } from "react";
-import { Typography, Tag, Tooltip } from "antd";
-import {
-  SoundOutlined,
-  MessageOutlined,
-  SettingOutlined,
-  AudioOutlined,
-  DownOutlined,
-  UpOutlined,
-} from "@ant-design/icons";
+import { ChevronDown, MessageSquare, Mic, Settings, Volume2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { SectionHeader } from "./SectionHeader";
-
-const { Text } = Typography;
 
 interface RealtimeEvent {
   type: string;
@@ -31,30 +17,30 @@ interface RealtimeSession {
   voice?: string;
   modalities?: string[];
   temperature?: number;
-  tools?: any[];
+  tools?: unknown[];
   instructions?: string;
-  turn_detection?: Record<string, any>;
+  turn_detection?: { type?: string };
   input_audio_format?: string;
   output_audio_format?: string;
   max_response_output_tokens?: string | number;
-  [key: string]: any;
+}
+
+interface RealtimeUsage {
+  input_tokens?: number;
+  output_tokens?: number;
+  total_tokens?: number;
+  input_token_details?: Record<string, unknown>;
+  output_token_details?: Record<string, unknown>;
 }
 
 interface RealtimeResponse {
   id: string;
   status: string;
-  usage?: {
-    input_tokens?: number;
-    output_tokens?: number;
-    total_tokens?: number;
-    input_token_details?: Record<string, any>;
-    output_token_details?: Record<string, any>;
-  };
+  usage?: RealtimeUsage;
   output?: RealtimeOutputItem[];
   modalities?: string[];
   voice?: string;
   conversation_id?: string;
-  [key: string]: any;
 }
 
 interface RealtimeOutputItem {
@@ -69,59 +55,40 @@ interface RealtimeOutputItem {
   }>;
 }
 
-interface RealtimePrettyViewProps {
-  response: any;
-  metrics?: {
-    prompt_tokens?: number;
-    completion_tokens?: number;
-    input_cost?: number;
-    output_cost?: number;
-  };
+interface RealtimeMetrics {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  input_cost?: number;
+  output_cost?: number;
 }
 
-export function isRealtimeResponse(response: any): boolean {
-  if (!response || !response.results || !Array.isArray(response.results) || response.results.length === 0) {
-    return false;
-  }
+interface RealtimePrettyViewProps {
+  response: any;
+  metrics?: RealtimeMetrics;
+}
 
-  return response.results.some(
-    (r: any) => r.type === "session.created" || r.type === "session.updated" || r.type === "response.done",
-  );
+const REALTIME_EVENT_TYPES: ReadonlySet<string> = new Set(["session.created", "session.updated", "response.done"]);
+
+export function isRealtimeResponse(response: unknown): boolean {
+  if (typeof response !== "object" || response === null || !("results" in response)) return false;
+  const results = response.results;
+  if (!Array.isArray(results) || results.length === 0) return false;
+  return results.some((r: { type?: string } | null) => REALTIME_EVENT_TYPES.has(r?.type ?? ""));
 }
 
 export function RealtimePrettyView({ response, metrics }: RealtimePrettyViewProps) {
   const events: RealtimeEvent[] = response?.results || [];
-  const usage = response?.usage;
+  const usage: RealtimeUsage | undefined = response?.usage;
 
   const sessionEvent = events.find((e) => e.type === "session.created" || e.type === "session.updated");
-  const responseEvents = events.filter((e) => e.type === "response.done");
+  const responses = events.flatMap((e) => (e.type === "response.done" && e.response ? [e.response] : []));
 
   return (
     <div>
-      {/* Session Configuration Card */}
-      {sessionEvent?.session && <SessionCard session={sessionEvent.session} turnCount={responseEvents.length} />}
-
-      {/* Conversation Turns */}
-      {responseEvents.length > 0 && (
-        <ConversationCard
-          responses={responseEvents.map((e) => e.response!).filter(Boolean)}
-          totalUsage={usage}
-          metrics={metrics}
-        />
-      )}
-
-      {/* Fallback if no recognized events */}
-      {!sessionEvent && responseEvents.length === 0 && (
-        <div
-          style={{
-            border: "1px solid #f0f0f0",
-            borderRadius: 6,
-            padding: "16px",
-            color: "#8c8c8c",
-            fontStyle: "italic",
-            fontSize: 13,
-          }}
-        >
+      {sessionEvent?.session && <SessionCard session={sessionEvent.session} turnCount={responses.length} />}
+      {responses.length > 0 && <ConversationCard responses={responses} totalUsage={usage} metrics={metrics} />}
+      {!sessionEvent && responses.length === 0 && (
+        <div className="rounded-md border border-border p-4 text-[13px] italic text-muted-foreground">
           No recognized realtime events found
         </div>
       )}
@@ -130,138 +97,69 @@ export function RealtimePrettyView({ response, metrics }: RealtimePrettyViewProp
 }
 
 function SessionCard({ session, turnCount }: { session: RealtimeSession; turnCount: number }) {
-  const [isCollapsed, setIsCollapsed] = useState(true);
+  const [open, setOpen] = useState(false);
 
   return (
-    <div
-      style={{
-        border: "1px solid #f0f0f0",
-        borderRadius: 6,
-        marginBottom: 8,
-        overflow: "hidden",
-      }}
+    <Collapsible
+      open={open}
+      onOpenChange={setOpen}
+      className="mb-2 overflow-hidden rounded-md border border-border bg-card"
     >
-      <div
-        onClick={() => setIsCollapsed(!isCollapsed)}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "10px 16px",
-          borderBottom: isCollapsed ? "none" : "1px solid #f0f0f0",
-          background: "#fafafa",
-          cursor: "pointer",
-          transition: "background 0.15s ease",
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = "#f5f5f5";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = "#fafafa";
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <div style={{ display: "flex", alignItems: "center" }}>
-            {isCollapsed ? (
-              <DownOutlined style={{ fontSize: 10, color: "#8c8c8c" }} />
-            ) : (
-              <UpOutlined style={{ fontSize: 10, color: "#8c8c8c" }} />
-            )}
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <SettingOutlined style={{ color: "#8c8c8c", fontSize: 14 }} />
-            <Text style={{ fontWeight: 500, fontSize: 14 }}>Session</Text>
-          </div>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            {session.model}
-          </Text>
-          {turnCount > 0 && (
-            <Tag color="purple" style={{ margin: 0, fontWeight: 500 }}>
-              {turnCount} {turnCount === 1 ? "turn" : "turns"}
-            </Tag>
+      <CollapsibleTrigger className="group flex w-full flex-wrap items-center gap-4 bg-muted px-4 py-2.5 text-left outline-none hover:bg-muted/80 focus-visible:ring-3 focus-visible:ring-ring/50">
+        <ChevronDown
+          aria-hidden
+          className="size-3 shrink-0 text-muted-foreground transition-transform group-data-panel-open:rotate-180"
+        />
+        <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+          <Settings aria-hidden className="size-3.5 text-muted-foreground" />
+          Session
+        </span>
+        <span className="text-xs text-muted-foreground">{session.model}</span>
+        {turnCount > 0 && (
+          <Badge variant="secondary">
+            {turnCount} {turnCount === 1 ? "turn" : "turns"}
+          </Badge>
+        )}
+        {session.voice && (
+          <Badge variant="outline">
+            <Volume2 aria-hidden />
+            {session.voice}
+          </Badge>
+        )}
+        {session.modalities && (
+          <span className="flex gap-1">
+            {session.modalities.map((m) => (
+              <Badge key={m} variant="outline">
+                {m === "audio" ? <Mic aria-hidden /> : <MessageSquare aria-hidden />}
+                {m}
+              </Badge>
+            ))}
+          </span>
+        )}
+      </CollapsibleTrigger>
+      <CollapsibleContent className="border-t border-border px-4 py-3">
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-[13px]">
+          <ConfigRow label="Model" value={session.model} />
+          <ConfigRow label="Voice" value={session.voice} />
+          <ConfigRow label="Temperature" value={session.temperature} />
+          <ConfigRow label="Max Output Tokens" value={session.max_response_output_tokens} />
+          <ConfigRow label="Input Audio Format" value={session.input_audio_format} />
+          <ConfigRow label="Output Audio Format" value={session.output_audio_format} />
+          {session.turn_detection && <ConfigRow label="Turn Detection" value={session.turn_detection.type} />}
+          {session.tools && session.tools.length > 0 && (
+            <ConfigRow label="Tools" value={`${session.tools.length} tool(s)`} />
           )}
-          {session.voice && (
-            <Tag color="blue" style={{ margin: 0 }}>
-              <SoundOutlined /> {session.voice}
-            </Tag>
-          )}
-          {session.modalities && (
-            <div style={{ display: "flex", gap: 4 }}>
-              {session.modalities.map((m) => (
-                <Tag key={m} style={{ margin: 0 }}>
-                  {m === "audio" ? <AudioOutlined /> : <MessageOutlined />} {m}
-                </Tag>
-              ))}
+        </dl>
+        {session.instructions && (
+          <div className="mt-3">
+            <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">Instructions</div>
+            <div className="max-h-[120px] overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted px-3 py-2 text-xs leading-relaxed text-foreground">
+              {session.instructions}
             </div>
-          )}
-        </div>
-      </div>
-
-      <div
-        style={{
-          maxHeight: isCollapsed ? "0px" : "10000px",
-          overflow: "hidden",
-          transition: "max-height 0.3s ease-out, opacity 0.3s ease-out",
-          opacity: isCollapsed ? 0 : 1,
-        }}
-      >
-        <div style={{ padding: "12px 16px" }}>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: "8px 24px",
-              fontSize: 13,
-            }}
-          >
-            <ConfigRow label="Model" value={session.model} />
-            <ConfigRow label="Voice" value={session.voice} />
-            <ConfigRow label="Temperature" value={session.temperature} />
-            <ConfigRow label="Max Output Tokens" value={session.max_response_output_tokens} />
-            <ConfigRow label="Input Audio Format" value={session.input_audio_format} />
-            <ConfigRow label="Output Audio Format" value={session.output_audio_format} />
-            {session.turn_detection && <ConfigRow label="Turn Detection" value={session.turn_detection.type} />}
-            {session.tools && session.tools.length > 0 && (
-              <ConfigRow label="Tools" value={`${session.tools.length} tool(s)`} />
-            )}
           </div>
-
-          {session.instructions && (
-            <div style={{ marginTop: 12 }}>
-              <Text
-                type="secondary"
-                style={{
-                  fontSize: 10,
-                  letterSpacing: "0.5px",
-                  textTransform: "uppercase",
-                  display: "block",
-                  marginBottom: 4,
-                }}
-              >
-                Instructions
-              </Text>
-              <div
-                style={{
-                  fontSize: 12,
-                  lineHeight: 1.6,
-                  color: "#595959",
-                  background: "#fafafa",
-                  padding: "8px 12px",
-                  borderRadius: 4,
-                  border: "1px solid #f0f0f0",
-                  whiteSpace: "pre-wrap",
-                  wordBreak: "break-word",
-                  maxHeight: 120,
-                  overflowY: "auto",
-                }}
-              >
-                {session.instructions}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+        )}
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -271,13 +169,11 @@ function ConversationCard({
   metrics,
 }: {
   responses: RealtimeResponse[];
-  totalUsage?: any;
-  metrics?: RealtimePrettyViewProps["metrics"];
+  totalUsage?: RealtimeUsage;
+  metrics?: RealtimeMetrics;
 }) {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [open, setOpen] = useState(true);
 
-  const totalTokens = totalUsage?.total_tokens;
-  const turnCount = responses.length;
   const handleCopy = () => {
     const transcripts = responses
       .flatMap((r) =>
@@ -288,85 +184,47 @@ function ConversationCard({
   };
 
   return (
-    <div
-      style={{
-        border: "1px solid #f0f0f0",
-        borderRadius: 6,
-        overflow: "hidden",
-      }}
-    >
+    <Collapsible open={open} onOpenChange={setOpen} className="overflow-hidden rounded-md border border-border bg-card">
       <SectionHeader
         type="output"
-        tokens={metrics?.completion_tokens ?? totalTokens}
+        tokens={metrics?.completion_tokens ?? totalUsage?.total_tokens}
         cost={metrics?.output_cost}
         onCopy={handleCopy}
-        isCollapsed={isCollapsed}
-        onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
-        turnCount={turnCount}
+        turnCount={responses.length}
       />
-
-      <div
-        style={{
-          maxHeight: isCollapsed ? "0px" : "10000px",
-          overflow: "hidden",
-          transition: "max-height 0.3s ease-out, opacity 0.3s ease-out",
-          opacity: isCollapsed ? 0 : 1,
-        }}
-      >
-        <div style={{ padding: "12px 16px" }}>
-          {responses.map((resp, idx) => (
-            <ResponseTurn key={resp.id || idx} response={resp} index={idx} />
-          ))}
-        </div>
-      </div>
-    </div>
+      <CollapsibleContent className="border-t border-border px-4 py-3">
+        {responses.map((resp, idx) => (
+          <ResponseTurn key={resp.id || idx} response={resp} />
+        ))}
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
-function ResponseTurn({ response, index }: { response: RealtimeResponse; index: number }) {
+function ResponseTurn({ response }: { response: RealtimeResponse }) {
   const outputs = response.output || [];
   const usage = response.usage;
 
   return (
-    <div
-      style={{
-        marginBottom: 12,
-        paddingBottom: 12,
-        borderBottom: "1px solid #f5f5f5",
-      }}
-    >
-      {/* Turn header */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          marginBottom: 8,
-        }}
-      >
-        <Tag color={response.status === "completed" ? "green" : "orange"} style={{ margin: 0 }}>
+    <div className="mb-3 border-b border-border pb-3 last:mb-0 last:border-b-0 last:pb-0">
+      <div className="mb-2 flex items-center gap-2">
+        <Badge variant={response.status === "completed" ? "outline" : "secondary"}>
           {response.status || "unknown"}
-        </Tag>
+        </Badge>
         {usage && (
-          <Text type="secondary" style={{ fontSize: 11 }}>
+          <span className="text-[11px] text-muted-foreground">
             {usage.input_tokens ?? 0} in / {usage.output_tokens ?? 0} out tokens
-          </Text>
+          </span>
         )}
         {response.conversation_id && (
-          <Tooltip title={response.conversation_id}>
-            <Text type="secondary" style={{ fontSize: 11, cursor: "help" }}>
-              conv: {response.conversation_id.slice(0, 12)}...
-            </Text>
-          </Tooltip>
+          <span title={response.conversation_id} className="cursor-help text-[11px] text-muted-foreground">
+            conv: {response.conversation_id.slice(0, 12)}...
+          </span>
         )}
       </div>
-
-      {/* Output messages / transcripts */}
       {outputs.map((output, oIdx) => (
         <OutputMessage key={output.id || oIdx} output={output} />
       ))}
-
-      {/* Token breakdown if available */}
       {usage?.input_token_details && <TokenBreakdown label="Input" details={usage.input_token_details} />}
       {usage?.output_token_details && <TokenBreakdown label="Output" details={usage.output_token_details} />}
     </div>
@@ -380,63 +238,18 @@ function OutputMessage({ output }: { output: RealtimeOutputItem }) {
   if (!hasTranscripts) return null;
 
   return (
-    <div style={{ marginBottom: 8 }}>
-      <Text
-        type="secondary"
-        style={{
-          fontSize: 10,
-          letterSpacing: "0.5px",
-          textTransform: "uppercase",
-          display: "block",
-          marginBottom: 3,
-        }}
-      >
+    <div className="mb-2">
+      <div className="mb-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
         {output.role?.toUpperCase() || "ASSISTANT"}
-      </Text>
+      </div>
       {contents.map((c, cIdx) => {
         const text = c.transcript || c.text;
         if (!text) return null;
         return (
-          <div
-            key={cIdx}
-            style={{
-              display: "flex",
-              alignItems: "flex-start",
-              gap: 8,
-              marginBottom: 4,
-            }}
-          >
-            {c.type === "audio" && (
-              <AudioOutlined
-                style={{
-                  color: "#8c8c8c",
-                  fontSize: 12,
-                  marginTop: 3,
-                  flexShrink: 0,
-                }}
-              />
-            )}
-            {c.type === "text" && (
-              <MessageOutlined
-                style={{
-                  color: "#8c8c8c",
-                  fontSize: 12,
-                  marginTop: 3,
-                  flexShrink: 0,
-                }}
-              />
-            )}
-            <div
-              style={{
-                fontSize: 13,
-                lineHeight: 1.7,
-                color: "#262626",
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-              }}
-            >
-              {text}
-            </div>
+          <div key={cIdx} className="mb-1 flex items-start gap-2">
+            {c.type === "audio" && <Mic aria-hidden className="mt-1 size-3 shrink-0 text-muted-foreground" />}
+            {c.type === "text" && <MessageSquare aria-hidden className="mt-1 size-3 shrink-0 text-muted-foreground" />}
+            <div className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-foreground">{text}</div>
           </div>
         );
       })}
@@ -444,49 +257,33 @@ function OutputMessage({ output }: { output: RealtimeOutputItem }) {
   );
 }
 
-function TokenBreakdown({ label, details }: { label: string; details: Record<string, any> }) {
-  const entries = Object.entries(details).filter(
-    ([, v]) => typeof v === "number" || (typeof v === "object" && v !== null),
+function TokenBreakdown({ label, details }: { label: string; details: Record<string, unknown> }) {
+  const entries = Object.entries(details).flatMap(([key, value]) =>
+    typeof value === "number" ? [[key, value] as const] : [],
   );
 
   if (entries.length === 0) return null;
 
   return (
-    <div style={{ marginTop: 4 }}>
-      <Text type="secondary" style={{ fontSize: 10, letterSpacing: "0.5px", textTransform: "uppercase" }}>
-        {label} Token Breakdown
-      </Text>
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 8,
-          marginTop: 4,
-        }}
-      >
-        {entries.map(([key, value]) => {
-          if (typeof value === "number") {
-            return (
-              <Tag key={key} style={{ margin: 0 }}>
-                {formatTokenLabel(key)}: {value.toLocaleString()}
-              </Tag>
-            );
-          }
-          return null;
-        })}
+    <div className="mt-1">
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label} Token Breakdown</div>
+      <div className="mt-1 flex flex-wrap gap-2">
+        {entries.map(([key, value]) => (
+          <Badge key={key} variant="outline">
+            {formatTokenLabel(key)}: {value.toLocaleString()}
+          </Badge>
+        ))}
       </div>
     </div>
   );
 }
 
-function ConfigRow({ label, value }: { label: string; value: any }) {
+function ConfigRow({ label, value }: { label: string; value: string | number | undefined }) {
   if (value === undefined || value === null) return null;
   return (
     <div>
-      <Text type="secondary" style={{ fontSize: 11 }}>
-        {label}
-      </Text>
-      <div style={{ fontSize: 13, color: "#262626" }}>{String(value)}</div>
+      <dt className="text-[11px] text-muted-foreground">{label}</dt>
+      <dd className="text-foreground">{String(value)}</dd>
     </div>
   );
 }

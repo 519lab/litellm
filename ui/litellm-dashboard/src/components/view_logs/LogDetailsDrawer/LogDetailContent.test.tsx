@@ -216,8 +216,44 @@ describe("LogDetailContent", () => {
     render(<LogDetailContent logEntry={createLogEntry()} />);
 
     expect(screen.getByText("Request & Response")).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: "Pretty" })).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: "JSON" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Pretty" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "JSON" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("switches from the pretty view to the JSON view and back via the aria-pressed toggle", async () => {
+    const user = userEvent.setup();
+    render(<LogDetailContent logEntry={createLogEntry()} />);
+
+    expect(screen.getByText("Input")).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Request" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "JSON" }));
+
+    expect(screen.getByRole("button", { name: "JSON" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Pretty" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByText("Input")).not.toBeInTheDocument();
+    const pre = screen.getByRole("tabpanel").querySelector("pre");
+    expect(pre).not.toBeNull();
+    expect(pre).toHaveClass("overflow-x-auto", "font-mono");
+    expect(pre?.textContent).toContain('"content": "hello"');
+    expect(screen.getByRole("button", { name: "Copy JSON" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Pretty" }));
+
+    expect(screen.getByRole("button", { name: "Pretty" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("Input")).toBeInTheDocument();
+  });
+
+  it("collapses the Request & Response section from its trigger", async () => {
+    const user = userEvent.setup();
+    render(<LogDetailContent logEntry={createLogEntry()} />);
+
+    const trigger = screen.getByRole("button", { name: "Request & Response" });
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    await user.click(trigger);
+
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Input")).not.toBeInTheDocument();
   });
 
   it("should display Request and Response tabs when JSON view is selected", async () => {
@@ -408,8 +444,8 @@ describe("LogDetailContent", () => {
       />,
     );
 
-    const descriptions = screen.getByText("Provider").closest(".ant-descriptions-item");
-    expect(descriptions).toBeInTheDocument();
-    expect(within(descriptions as HTMLElement).getByText("-")).toBeInTheDocument();
+    const providerItem = screen.getByText("Provider").closest("div");
+    expect(providerItem).toBeInTheDocument();
+    expect(within(providerItem as HTMLElement).getByText("-")).toBeInTheDocument();
   });
 });

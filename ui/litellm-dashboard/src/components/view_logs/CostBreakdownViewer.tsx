@@ -1,6 +1,7 @@
-import React from "react";
-import { Collapse } from "antd";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { formatNumberWithCommas } from "@/utils/dataUtils";
+import { ChevronRight } from "lucide-react";
+import React from "react";
 
 export interface CostBreakdown {
   input_cost?: number;
@@ -29,259 +30,157 @@ interface CostBreakdownViewerProps {
   cacheCreationTokens?: number;
 }
 
-const formatCost = (cost: number | undefined): string => {
-  if (cost === undefined || cost === null) return "-";
-  return `$${formatNumberWithCommas(cost, 8)}`;
+interface CostLine {
+  readonly label: string;
+  readonly value: string;
+  readonly note?: string;
+  readonly emphasis?: boolean;
+}
+
+const formatCost = (cost: number | undefined): string =>
+  cost === undefined || cost === null ? "-" : `$${formatNumberWithCommas(cost, 8)}`;
+
+const formatPercent = (percent: number | undefined): string =>
+  percent === undefined || percent === null ? "-" : `${(percent * 100).toFixed(2)}%`;
+
+const nonZero = (value: number | undefined): value is number => value !== undefined && value !== 0;
+
+const tokens = (count: number | undefined, suffix = "tokens"): string | undefined =>
+  count === undefined || count === null ? undefined : `(${count.toLocaleString()} ${suffix})`;
+
+const line = (label: string, value: string, note?: string, emphasis?: boolean): CostLine => ({
+  label,
+  value,
+  note,
+  emphasis,
+});
+
+const tokenLines = (
+  p: CostBreakdownViewerProps,
+  isCached: boolean,
+  inputCost: number | undefined,
+  outputCost: number | undefined,
+): readonly CostLine[] => {
+  const cb = p.costBreakdown;
+  const hasCacheBreakdown = cb?.cache_read_cost !== undefined || cb?.cache_creation_cost !== undefined;
+  const inputLines = hasCacheBreakdown
+    ? [
+        line(
+          "Input Cost",
+          formatCost(isCached ? 0 : (inputCost ?? 0) - (cb?.cache_read_cost ?? 0) - (cb?.cache_creation_cost ?? 0)),
+          tokens(p.rawInputTokens),
+        ),
+        ...((cb?.cache_read_cost ?? 0) > 0
+          ? [line("Cache Read Cost", formatCost(isCached ? 0 : cb?.cache_read_cost), tokens(p.cacheReadTokens))]
+          : []),
+        ...((cb?.cache_creation_cost ?? 0) > 0
+          ? [
+              line(
+                "Cache Write Cost",
+                formatCost(isCached ? 0 : cb?.cache_creation_cost),
+                tokens(p.cacheCreationTokens),
+              ),
+            ]
+          : []),
+      ]
+    : [line("Input Cost", formatCost(inputCost), tokens(p.promptTokens, "prompt tokens"))];
+  const extra = Object.entries(cb?.additional_costs ?? {})
+    .filter(([, value]) => value != null && value !== 0)
+    .map(([key, value]) => line(key, formatCost(value)));
+  return [
+    ...inputLines,
+    line("Output Cost", formatCost(outputCost), tokens(p.completionTokens, "completion tokens")),
+    ...(nonZero(cb?.tool_usage_cost) && cb.tool_usage_cost > 0
+      ? [line("Tool Usage Cost", formatCost(cb.tool_usage_cost))]
+      : []),
+    ...extra,
+  ];
 };
 
-const formatPercent = (percent: number | undefined): string => {
-  if (percent === undefined || percent === null) return "-";
-  return `${(percent * 100).toFixed(2)}%`;
+const discountLines = (cb: CostBreakdown): readonly CostLine[] => {
+  if (nonZero(cb.discount_percent)) {
+    return [line(`Discount (${formatPercent(cb.discount_percent)})`, `-${formatCost(cb.discount_amount)}`)];
+  }
+  if (cb.discount_amount !== undefined) return [line("Discount Amount", `-${formatCost(cb.discount_amount)}`)];
+  return [];
 };
 
-export const CostBreakdownViewer: React.FC<CostBreakdownViewerProps> = ({
-  costBreakdown,
-  totalSpend,
-  promptTokens,
-  completionTokens,
-  cacheHit,
-  rawInputTokens,
-  cacheReadTokens,
-  cacheCreationTokens,
-}) => {
+const adjustmentLines = (cb: CostBreakdown | null | undefined): readonly CostLine[] => {
+  if (!cb) return [];
+  const discount = discountLines(cb);
+  const margin = [
+    ...(nonZero(cb.margin_percent)
+      ? [
+          line(
+            `Margin (${formatPercent(cb.margin_percent)})`,
+            `+${formatCost((cb.margin_total_amount || 0) - (cb.margin_fixed_amount || 0))}`,
+          ),
+        ]
+      : []),
+    ...(nonZero(cb.margin_fixed_amount) ? [line("Margin", `+${formatCost(cb.margin_fixed_amount)}`)] : []),
+  ];
+  return [...discount, ...margin];
+};
+
+const Lines: React.FC<{ lines: readonly CostLine[] }> = ({ lines }) => (
+  <dl className="grid max-w-2xl grid-cols-[minmax(10rem,1fr)_2fr] gap-y-1.5 text-sm">
+    {lines.map((l) => (
+      <React.Fragment key={l.label}>
+        <dt className={l.emphasis ? "font-semibold text-foreground" : "font-medium text-muted-foreground"}>
+          {l.label}:
+        </dt>
+        <dd className={l.emphasis ? "font-semibold tabular-nums text-foreground" : "tabular-nums text-foreground"}>
+          {l.value}
+          {l.note && <span className="ml-1 font-normal text-muted-foreground">{l.note}</span>}
+        </dd>
+      </React.Fragment>
+    ))}
+  </dl>
+);
+
+export const CostBreakdownViewer: React.FC<CostBreakdownViewerProps> = (props) => {
+  const { costBreakdown, totalSpend, promptTokens, completionTokens, cacheHit } = props;
   const isCached = cacheHit?.toLowerCase() === "true";
   const hasTokenCounts = promptTokens !== undefined || completionTokens !== undefined;
-
   const hasCostBreakdown = costBreakdown?.input_cost !== undefined || costBreakdown?.output_cost !== undefined;
-  const hasAdditionalCosts =
-    costBreakdown?.additional_costs &&
-    Object.entries(costBreakdown.additional_costs).some(([, value]) => value != null && value !== 0);
-  const hasMeaningfulData =
-    hasCostBreakdown ||
-    hasTokenCounts ||
-    hasAdditionalCosts ||
-    (costBreakdown &&
-      ((costBreakdown.discount_percent !== undefined && costBreakdown.discount_percent !== 0) ||
-        (costBreakdown.discount_amount !== undefined && costBreakdown.discount_amount !== 0) ||
-        (costBreakdown.margin_percent !== undefined && costBreakdown.margin_percent !== 0) ||
-        (costBreakdown.margin_fixed_amount !== undefined && costBreakdown.margin_fixed_amount !== 0) ||
-        (costBreakdown.margin_total_amount !== undefined && costBreakdown.margin_total_amount !== 0)));
+  const adjustments = adjustmentLines(costBreakdown);
+  const hasAdditionalCosts = Object.values(costBreakdown?.additional_costs ?? {}).some((v) => v != null && v !== 0);
+  if (!hasCostBreakdown && !hasTokenCounts && !hasAdditionalCosts && adjustments.length === 0) return null;
 
-  if (!hasMeaningfulData) {
-    return null;
-  }
-
-  const hasDiscount =
-    costBreakdown &&
-    ((costBreakdown.discount_percent !== undefined && costBreakdown.discount_percent !== 0) ||
-      (costBreakdown.discount_amount !== undefined && costBreakdown.discount_amount !== 0));
-
-  const hasMargin =
-    costBreakdown &&
-    ((costBreakdown.margin_percent !== undefined && costBreakdown.margin_percent !== 0) ||
-      (costBreakdown.margin_fixed_amount !== undefined && costBreakdown.margin_fixed_amount !== 0) ||
-      (costBreakdown.margin_total_amount !== undefined && costBreakdown.margin_total_amount !== 0));
-
-  // When cached, show $0 (authoritative total) instead of pre-cache costs from cost_breakdown
   const inputCost = isCached ? 0 : costBreakdown?.input_cost;
   const outputCost = isCached ? 0 : costBreakdown?.output_cost;
   const originalCost = isCached ? 0 : costBreakdown?.original_cost;
   const totalCost = isCached ? 0 : costBreakdown?.total_cost ?? totalSpend;
+  const cachedSuffix = isCached ? " (Cached)" : "";
 
   return (
-    <div className="bg-white rounded-lg shadow-sm w-full max-w-full overflow-hidden mb-6">
-      <Collapse
-        expandIconPosition="start"
-        items={[
-          {
-            key: "1",
-            label: (
-              <div className="flex items-center justify-between w-full">
-                <h3 className="text-lg font-medium text-gray-900">Cost Breakdown</h3>
-                <div className="flex items-center space-x-2 mr-4">
-                  <span className="text-sm text-gray-500">Total:</span>
-                  <span className="text-sm font-semibold text-gray-900">
-                    {formatCost(totalSpend)}
-                    {isCached && " (Cached)"}
-                  </span>
-                </div>
-              </div>
-            ),
-            children: (
-              <div className="p-6 space-y-4">
-                {/* Step 1: Base Token Costs */}
-                <div className="space-y-2 max-w-2xl">
-                  {(() => {
-                    const hasCacheBreakdown =
-                      costBreakdown?.cache_read_cost !== undefined || costBreakdown?.cache_creation_cost !== undefined;
-                    if (hasCacheBreakdown) {
-                      // Separate line items: Input / Cache Read / Cache Write
-                      const rawCost = isCached
-                        ? 0
-                        : (inputCost ?? 0) -
-                          (costBreakdown?.cache_read_cost ?? 0) -
-                          (costBreakdown?.cache_creation_cost ?? 0);
-                      return (
-                        <>
-                          <div className="flex text-sm">
-                            <span className="text-gray-600 font-medium w-1/3">Input Cost:</span>
-                            <span className="text-gray-900">
-                              {formatCost(rawCost)}
-                              {rawInputTokens !== undefined && rawInputTokens !== null && (
-                                <span className="text-gray-500 font-normal ml-1">
-                                  ({rawInputTokens.toLocaleString()} tokens)
-                                </span>
-                              )}
-                            </span>
-                          </div>
-                          {(costBreakdown?.cache_read_cost ?? 0) > 0 && (
-                            <div className="flex text-sm">
-                              <span className="text-gray-600 font-medium w-1/3">Cache Read Cost:</span>
-                              <span className="text-gray-900">
-                                {formatCost(isCached ? 0 : costBreakdown?.cache_read_cost)}
-                                {(cacheReadTokens ?? 0) > 0 && (
-                                  <span className="text-gray-500 font-normal ml-1">
-                                    ({(cacheReadTokens ?? 0).toLocaleString()} tokens)
-                                  </span>
-                                )}
-                              </span>
-                            </div>
-                          )}
-                          {(costBreakdown?.cache_creation_cost ?? 0) > 0 && (
-                            <div className="flex text-sm">
-                              <span className="text-gray-600 font-medium w-1/3">Cache Write Cost:</span>
-                              <span className="text-gray-900">
-                                {formatCost(isCached ? 0 : costBreakdown?.cache_creation_cost)}
-                                {(cacheCreationTokens ?? 0) > 0 && (
-                                  <span className="text-gray-500 font-normal ml-1">
-                                    ({(cacheCreationTokens ?? 0).toLocaleString()} tokens)
-                                  </span>
-                                )}
-                              </span>
-                            </div>
-                          )}
-                        </>
-                      );
-                    }
-                    return (
-                      <div className="flex text-sm">
-                        <span className="text-gray-600 font-medium w-1/3">Input Cost:</span>
-                        <span className="text-gray-900">
-                          {formatCost(inputCost)}
-                          {promptTokens !== undefined && (
-                            <span className="text-gray-500 font-normal ml-1">
-                              ({promptTokens.toLocaleString()} prompt tokens)
-                            </span>
-                          )}
-                        </span>
-                      </div>
-                    );
-                  })()}
-                  <div className="flex text-sm">
-                    <span className="text-gray-600 font-medium w-1/3">Output Cost:</span>
-                    <span className="text-gray-900">
-                      {formatCost(outputCost)}
-                      {completionTokens !== undefined && (
-                        <span className="text-gray-500 font-normal ml-1">
-                          ({completionTokens.toLocaleString()} completion tokens)
-                        </span>
-                      )}
-                    </span>
-                  </div>
-                  {costBreakdown?.tool_usage_cost !== undefined && costBreakdown.tool_usage_cost > 0 && (
-                    <div className="flex text-sm">
-                      <span className="text-gray-600 font-medium w-1/3">Tool Usage Cost:</span>
-                      <span className="text-gray-900">{formatCost(costBreakdown.tool_usage_cost)}</span>
-                    </div>
-                  )}
-                  {costBreakdown?.additional_costs &&
-                    Object.entries(costBreakdown.additional_costs)
-                      .filter(([, value]) => value != null && value !== 0)
-                      .map(([key, value]) => (
-                        <div key={key} className="flex text-sm">
-                          <span className="text-gray-600 font-medium w-1/3">{key}:</span>
-                          <span className="text-gray-900">{formatCost(value)}</span>
-                        </div>
-                      ))}
-                </div>
-
-                {/* Subtotal / Original Cost - hide when cached since it would be $0 */}
-                {!isCached && (
-                  <div className="pt-2 border-t border-gray-100 max-w-2xl">
-                    <div className="flex text-sm font-semibold">
-                      <span className="text-gray-900 w-1/3">Original LLM Cost:</span>
-                      <span className="text-gray-900">{formatCost(originalCost)}</span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Step 2: Adjustments (Discount & Margin) */}
-                {(hasDiscount || hasMargin) && (
-                  <div className="pt-2 space-y-2 max-w-2xl">
-                    {/* Discounts */}
-                    {hasDiscount && (
-                      <div className="space-y-2">
-                        {costBreakdown.discount_percent !== undefined && costBreakdown.discount_percent !== 0 && (
-                          <div className="flex text-sm text-gray-600">
-                            <span className="font-medium w-1/3">
-                              Discount ({formatPercent(costBreakdown.discount_percent)}):
-                            </span>
-                            <span className="text-gray-900">-{formatCost(costBreakdown.discount_amount)}</span>
-                          </div>
-                        )}
-                        {costBreakdown.discount_amount !== undefined &&
-                          costBreakdown.discount_percent === undefined && (
-                            <div className="flex text-sm text-gray-600">
-                              <span className="font-medium w-1/3">Discount Amount:</span>
-                              <span className="text-gray-900">-{formatCost(costBreakdown.discount_amount)}</span>
-                            </div>
-                          )}
-                      </div>
-                    )}
-
-                    {/* Margins */}
-                    {hasMargin && (
-                      <div className="space-y-2">
-                        {costBreakdown.margin_percent !== undefined && costBreakdown.margin_percent !== 0 && (
-                          <div className="flex text-sm text-gray-600">
-                            <span className="font-medium w-1/3">
-                              Margin ({formatPercent(costBreakdown.margin_percent)}):
-                            </span>
-                            <span className="text-gray-900">
-                              +
-                              {formatCost(
-                                (costBreakdown.margin_total_amount || 0) - (costBreakdown.margin_fixed_amount || 0),
-                              )}
-                            </span>
-                          </div>
-                        )}
-                        {costBreakdown.margin_fixed_amount !== undefined && costBreakdown.margin_fixed_amount !== 0 && (
-                          <div className="flex text-sm text-gray-600">
-                            <span className="font-medium w-1/3">Margin:</span>
-                            <span className="text-gray-900">+{formatCost(costBreakdown.margin_fixed_amount)}</span>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Final Summary */}
-                <div className="mt-4 pt-4 border-t border-gray-200 max-w-2xl">
-                  <div className="flex items-center">
-                    <span className="font-bold text-sm text-gray-900 w-1/3">Final Calculated Cost:</span>
-                    <span className="text-sm font-bold text-gray-900">
-                      {formatCost(totalCost)}
-                      {isCached && " (Cached)"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ),
-          },
-        ]}
-      />
-    </div>
+    <Collapsible className="mb-6 w-full overflow-hidden rounded-lg border border-border bg-card">
+      <CollapsibleTrigger className="group flex w-full items-center gap-2 px-4 py-3 text-left hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+        <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]:rotate-90" />
+        <h3 className="flex-1 text-base font-medium text-foreground">Cost Breakdown</h3>
+        <span className="text-sm text-muted-foreground">Total:</span>
+        <span className="text-sm font-semibold tabular-nums text-foreground">
+          {formatCost(totalSpend)}
+          {cachedSuffix}
+        </span>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="space-y-4 border-t border-border px-4 py-4">
+        <Lines lines={tokenLines(props, isCached, inputCost, outputCost)} />
+        {!isCached && (
+          <div className="border-t border-border pt-2">
+            <Lines lines={[line("Original LLM Cost", formatCost(originalCost), undefined, true)]} />
+          </div>
+        )}
+        {adjustments.length > 0 && (
+          <div className="pt-2">
+            <Lines lines={adjustments} />
+          </div>
+        )}
+        <div className="border-t border-border pt-3">
+          <Lines lines={[line("Final Calculated Cost", `${formatCost(totalCost)}${cachedSuffix}`, undefined, true)]} />
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 };
 

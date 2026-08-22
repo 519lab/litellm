@@ -18,15 +18,22 @@ describe("TruncatedValue", () => {
     expect(screen.getByText("-")).toBeInTheDocument();
   });
 
-  it("should apply the default maxWidth when not specified", () => {
+  it("should apply the default max width class when not specified", () => {
     render(<TruncatedValue value="some-long-id-value" />);
     const el = screen.getByText("some-long-id-value");
-    expect(el).toHaveStyle({ maxWidth: "180px" });
+    expect(el).toHaveClass("max-w-[180px]", "truncate");
+    expect(el).toHaveAttribute("title", "some-long-id-value");
   });
 
-  it("should apply custom maxWidth when provided", () => {
-    render(<TruncatedValue value="test-value" maxWidth={300} />);
+  it("should apply a custom max width class when provided", () => {
+    render(<TruncatedValue value="test-value" className="max-w-[300px]" />);
     const el = screen.getByText("test-value");
-    expect(el).toHaveStyle({ maxWidth: "300px" });
+    expect(el).toHaveClass("max-w-[300px]");
+    expect(el).not.toHaveClass("max-w-[180px]");
+  });
+
+  it("renders a copy button for the value", () => {
+    render(<TruncatedValue value="copy-me" />);
+    expect(screen.getByRole("button", { name: "Copy" })).toBeInTheDocument();
   });
 });

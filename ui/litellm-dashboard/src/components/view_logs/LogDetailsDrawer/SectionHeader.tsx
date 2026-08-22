@@ -1,109 +1,43 @@
-/**
- * SectionHeader - Datadog-style header with icon, label, metrics, and copy
- */
-
-import { Typography, Button, Tooltip } from "antd";
-import { MessageOutlined, CopyOutlined, DownOutlined, UpOutlined } from "@ant-design/icons";
-
-const { Text } = Typography;
+import { ChevronDown, Copy, MessageSquare, Sparkles } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { CollapsibleTrigger } from "@/components/ui/collapsible";
 
 interface SectionHeaderProps {
   type: "input" | "output";
   tokens?: number;
   cost?: number;
   onCopy: () => void;
-  isCollapsed?: boolean;
-  onToggleCollapse?: () => void;
   turnCount?: number;
 }
 
-export function SectionHeader({
-  type,
-  tokens,
-  cost,
-  onCopy,
-  isCollapsed,
-  onToggleCollapse,
-  turnCount,
-}: SectionHeaderProps) {
+export function SectionHeader({ type, tokens, cost, onCopy, turnCount }: SectionHeaderProps) {
+  const label = type === "input" ? "Input" : "Output";
+  const Icon = type === "input" ? MessageSquare : Sparkles;
+
   return (
-    <div
-      onClick={onToggleCollapse}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "10px 16px",
-        borderBottom: isCollapsed ? "none" : "1px solid #f0f0f0",
-        background: "#fafafa",
-        cursor: onToggleCollapse ? "pointer" : "default",
-        transition: "background 0.15s ease",
-      }}
-      onMouseEnter={(e) => {
-        if (onToggleCollapse) {
-          e.currentTarget.style.background = "#f5f5f5";
-        }
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = "#fafafa";
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-        {/* Collapse Arrow */}
-        {onToggleCollapse && (
-          <div style={{ display: "flex", alignItems: "center" }}>
-            {isCollapsed ? (
-              <DownOutlined style={{ fontSize: 10, color: "#8c8c8c" }} />
-            ) : (
-              <UpOutlined style={{ fontSize: 10, color: "#8c8c8c" }} />
-            )}
-          </div>
-        )}
-
-        {/* Icon + Label */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {type === "input" ? (
-            <MessageOutlined style={{ color: "#8c8c8c", fontSize: 14 }} />
-          ) : (
-            <span style={{ fontSize: 14, filter: "grayscale(1)", opacity: 0.6 }}>✨</span>
-          )}
-          <Text style={{ fontWeight: 500, fontSize: 14 }}>{type === "input" ? "Input" : "Output"}</Text>
-        </div>
-
-        {/* Tokens */}
-        {tokens !== undefined && (
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            Tokens: {tokens.toLocaleString()}
-          </Text>
-        )}
-
-        {/* Cost */}
-        {cost !== undefined && cost > 0 && (
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            Cost: ${cost.toFixed(6)}
-          </Text>
-        )}
-
-        {/* Turn count */}
-        {turnCount !== undefined && turnCount > 0 && (
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            Turns: {turnCount}
-          </Text>
-        )}
-      </div>
-
-      {/* Copy Button */}
-      <Tooltip title="Copy">
-        <Button
-          type="text"
-          size="small"
-          icon={<CopyOutlined />}
-          onClick={(e) => {
-            e.stopPropagation(); // Prevent triggering collapse
-            onCopy();
-          }}
+    <div className="flex items-center justify-between gap-2 bg-muted px-4 py-2.5">
+      <CollapsibleTrigger className="group flex min-w-0 flex-1 items-center gap-4 rounded-md text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+        <ChevronDown
+          aria-hidden
+          className="size-3 shrink-0 text-muted-foreground transition-transform group-data-panel-open:rotate-180"
         />
-      </Tooltip>
+        <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+          <Icon aria-hidden className="size-3.5 text-muted-foreground" />
+          {label}
+        </span>
+        {tokens !== undefined && (
+          <span className="text-xs text-muted-foreground">Tokens: {tokens.toLocaleString()}</span>
+        )}
+        {cost !== undefined && cost > 0 && (
+          <span className="text-xs text-muted-foreground">Cost: ${cost.toFixed(6)}</span>
+        )}
+        {turnCount !== undefined && turnCount > 0 && (
+          <span className="text-xs text-muted-foreground">Turns: {turnCount}</span>
+        )}
+      </CollapsibleTrigger>
+      <Button type="button" variant="ghost" size="icon-xs" aria-label={`Copy ${label.toLowerCase()}`} onClick={onCopy}>
+        <Copy />
+      </Button>
     </div>
   );
 }
