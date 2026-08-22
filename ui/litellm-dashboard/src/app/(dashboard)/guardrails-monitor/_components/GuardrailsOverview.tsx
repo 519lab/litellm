@@ -128,9 +128,11 @@ export function GuardrailsOverview({
       sorter: true,
       sortOrder: sortBy === "failRate" ? (sortDir === "desc" ? "descend" : "ascend") : null,
       render: (v: number, row) => (
-        <span className={v > 15 ? "text-red-600" : v > 5 ? "text-amber-600" : "text-green-600"}>
-          {v}%{row.trend === "up" && <span className="ml-1 text-xs text-red-400">↑</span>}
-          {row.trend === "down" && <span className="ml-1 text-xs text-green-400">↓</span>}
+        <span
+          className={v > 15 ? "text-destructive" : v > 5 ? "text-amber-600 dark:text-amber-400" : "text-foreground"}
+        >
+          {v}%{row.trend === "up" && <span className="ml-1 text-xs text-destructive">↑</span>}
+          {row.trend === "down" && <span className="ml-1 text-xs text-muted-foreground">↓</span>}
         </span>
       ),
     },
@@ -144,7 +146,13 @@ export function GuardrailsOverview({
       render: (v?: number) => (
         <span
           className={
-            v == null ? "text-gray-400" : v > 150 ? "text-red-600" : v > 50 ? "text-amber-600" : "text-green-600"
+            v == null
+              ? "text-muted-foreground"
+              : v > 150
+                ? "text-destructive"
+                : v > 50
+                  ? "text-amber-600 dark:text-amber-400"
+                  : "text-foreground"
           }
         >
           {v != null ? `${v}ms` : "—"}
@@ -160,7 +168,7 @@ export function GuardrailsOverview({
         <span className="inline-flex items-center gap-1.5">
           <span
             className={`w-2 h-2 rounded-full ${
-              status === "healthy" ? "bg-green-500" : status === "warning" ? "bg-amber-500" : "bg-red-500"
+              status === "healthy" ? "bg-muted-foreground" : status === "warning" ? "bg-amber-500" : "bg-destructive"
             }`}
           />
           <span className="text-xs text-gray-600 capitalize">{status}</span>
@@ -203,16 +211,16 @@ export function GuardrailsOverview({
           <MetricCard
             label="Blocked Requests"
             value={metrics.totalBlocked.toLocaleString()}
-            valueColor="text-red-600"
-            icon={<WarningOutlined className="text-red-400" />}
+            valueColor="text-destructive"
+            icon={<WarningOutlined className="text-destructive" />}
           />
         </Col>
         <Col xs={12} sm={12} md={8} flex="1 0 20%">
           <MetricCard
             label="Pass Rate"
             value={`${metrics.passRate}%`}
-            valueColor="text-green-600"
-            icon={<RiseOutlined className="text-green-400" />}
+            valueColor="text-foreground"
+            icon={<RiseOutlined className="text-muted-foreground" />}
           />
         </Col>
         <Col xs={12} sm={12} md={8} flex="1 0 20%">
@@ -220,7 +228,11 @@ export function GuardrailsOverview({
             label="Avg. latency added"
             value={`${metrics.avgLatency}ms`}
             valueColor={
-              metrics.avgLatency > 150 ? "text-red-600" : metrics.avgLatency > 50 ? "text-amber-600" : "text-green-600"
+              metrics.avgLatency > 150
+                ? "text-destructive"
+                : metrics.avgLatency > 50
+                  ? "text-amber-600 dark:text-amber-400"
+                  : "text-foreground"
             }
           />
         </Col>
@@ -237,7 +249,7 @@ export function GuardrailsOverview({
         {(isLoading || error) && (
           <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
             {isLoading && <Spin size="small" />}
-            {error && <span className="text-sm text-red-600">Failed to load data. Try again.</span>}
+            {error && <span className="text-sm text-destructive">Failed to load data. Try again.</span>}
           </div>
         )}
         <div className="px-6 py-4 border-b border-gray-200 flex items-start justify-between gap-4">

@@ -112,7 +112,7 @@ const CategoryTable: React.FC<CategoryTableProps> = ({
   }
 
   if (categories.length === 0) {
-    return <div style={{ textAlign: "center", padding: "40px 0", color: "#999" }}>No categories configured.</div>;
+    return <div className="py-10 text-center text-muted-foreground">No categories configured.</div>;
   }
 
   return <Table dataSource={categories} columns={columns} rowKey="id" pagination={false} size="small" />;

@@ -2,6 +2,7 @@ import React from "react";
 import { Card, Typography, Select, Table, Tag, Collapse, Button } from "antd";
 import { DeleteOutlined, PlusOutlined, FileTextOutlined } from "@ant-design/icons";
 import { getCategoryYaml } from "@/components/networking";
+import { cn } from "@/lib/cva.config";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -170,9 +171,7 @@ const ContentCategoryConfiguration: React.FC<ContentCategoryConfigurationProps> 
         return (
           <div>
             <div style={{ fontWeight: 500 }}>{text}</div>
-            {category?.description && (
-              <div style={{ fontSize: "12px", color: "#888", marginTop: "4px" }}>{category.description}</div>
-            )}
+            {category?.description && <div className="mt-1 text-xs text-muted-foreground">{category.description}</div>}
           </div>
         );
       },
@@ -262,7 +261,7 @@ const ContentCategoryConfiguration: React.FC<ContentCategoryConfigurationProps> 
             <Option key={cat.name} value={cat.name} label={cat.display_name}>
               <div>
                 <div style={{ fontWeight: 500 }}>{cat.display_name}</div>
-                <div style={{ fontSize: "12px", color: "#666", marginTop: "2px" }}>{cat.description}</div>
+                <div className="mt-0.5 text-xs text-muted-foreground">{cat.description}</div>
               </div>
             </Option>
           ))}
@@ -274,48 +273,28 @@ const ContentCategoryConfiguration: React.FC<ContentCategoryConfigurationProps> 
 
       {/* Preview box - shown when category is selected but not yet added */}
       {selectedCategoryName && (
-        <div
-          style={{
-            marginBottom: 16,
-            padding: "12px",
-            background: "#f9f9f9",
-            border: "1px solid #e0e0e0",
-            borderRadius: "4px",
-          }}
-        >
+        <div className="mb-4 rounded border border-border bg-muted p-3 text-foreground">
           <div style={{ marginBottom: 8, fontWeight: 500, fontSize: "14px" }}>
             Preview: {availableCategories.find((c) => c.name === selectedCategoryName)?.display_name}
             {categoryFileTypes[selectedCategoryName] && (
-              <span style={{ marginLeft: 8, fontSize: "12px", color: "#888", fontWeight: 400 }}>
+              <span className="ml-2 text-xs font-normal text-muted-foreground">
                 ({categoryFileTypes[selectedCategoryName]?.toUpperCase()})
               </span>
             )}
           </div>
           {loadingPreviewYaml ? (
-            <div style={{ padding: "16px", textAlign: "center", color: "#888" }}>Loading content...</div>
+            <div className="p-4 text-center text-muted-foreground">Loading content...</div>
           ) : previewYaml ? (
             <pre
-              style={{
-                background: "#fff",
-                padding: "12px",
-                borderRadius: "4px",
-                overflow: "auto",
-                maxHeight: "300px",
-                maxWidth: "100%",
-                fontSize: "12px",
-                lineHeight: "1.5",
-                margin: 0,
-                border: "1px solid #e0e0e0",
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-              }}
+              className={cn(
+                "m-0 max-h-[300px] max-w-full overflow-auto rounded border border-border bg-card p-3",
+                "text-xs leading-normal break-words whitespace-pre-wrap text-card-foreground",
+              )}
             >
               <code>{previewYaml}</code>
             </pre>
           ) : (
-            <div style={{ padding: "8px", textAlign: "center", color: "#888", fontSize: "12px" }}>
-              Unable to load category content
-            </div>
+            <div className="p-2 text-center text-xs text-muted-foreground">Unable to load category content</div>
           )}
         </div>
       )}
@@ -356,26 +335,18 @@ const ContentCategoryConfiguration: React.FC<ContentCategoryConfigurationProps> 
                     </div>
                   ),
                   children: loadingYaml[category.category] ? (
-                    <div style={{ padding: "16px", textAlign: "center", color: "#888" }}>Loading content...</div>
+                    <div className="p-4 text-center text-muted-foreground">Loading content...</div>
                   ) : categoryYaml[category.category] ? (
                     <pre
-                      style={{
-                        background: "#f5f5f5",
-                        padding: "16px",
-                        borderRadius: "4px",
-                        overflow: "auto",
-                        maxHeight: "400px",
-                        fontSize: "12px",
-                        lineHeight: "1.5",
-                        margin: 0,
-                      }}
+                      className={cn(
+                        "m-0 max-h-[400px] overflow-auto rounded bg-muted p-4",
+                        "text-xs leading-normal text-foreground",
+                      )}
                     >
                       <code>{categoryYaml[category.category]}</code>
                     </pre>
                   ) : (
-                    <div style={{ padding: "16px", textAlign: "center", color: "#888" }}>
-                      Content will load when expanded
-                    </div>
+                    <div className="p-4 text-center text-muted-foreground">Content will load when expanded</div>
                   ),
                 };
               })}
@@ -383,15 +354,7 @@ const ContentCategoryConfiguration: React.FC<ContentCategoryConfigurationProps> 
           </div>
         </>
       ) : (
-        <div
-          style={{
-            textAlign: "center",
-            padding: "24px",
-            color: "#888",
-            border: "1px dashed #d9d9d9",
-            borderRadius: "4px",
-          }}
-        >
+        <div className="rounded border border-dashed border-border p-6 text-center text-muted-foreground">
           No blocked topics selected. Add topics to detect and block harmful content.
         </div>
       )}

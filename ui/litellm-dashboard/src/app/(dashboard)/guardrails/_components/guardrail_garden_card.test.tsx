@@ -69,4 +69,13 @@ describe("GuardrailCard", () => {
     render(<GuardrailCard card={cardNoLogo} onClick={vi.fn()} />);
     expect(screen.getByText("T")).toBeInTheDocument();
   });
+
+  it("should use the theme card token instead of an inline background colour", () => {
+    render(<GuardrailCard card={baseCard} onClick={vi.fn()} />);
+    const container = screen.getByTestId("guardrail-garden-card");
+
+    expect(container.style.backgroundColor).toBe("");
+    expect(container.style.border).toBe("");
+    expect(container).toHaveClass("bg-card");
+  });
 });

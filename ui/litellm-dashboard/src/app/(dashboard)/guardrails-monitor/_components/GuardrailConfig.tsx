@@ -204,12 +204,12 @@ export function GuardrailConfig({ guardrailName, guardrailType, provider }: Guar
           </Button>
 
           {rerunStatus === "success" && (
-            <span className="text-sm text-green-600 flex items-center gap-2">
+            <span className="text-sm text-foreground flex items-center gap-2">
               <CheckCircleOutlined /> 7/10 would now pass with new config
             </span>
           )}
 
-          {rerunStatus === "error" && <span className="text-sm text-red-600">Error running tests</span>}
+          {rerunStatus === "error" && <span className="text-sm text-destructive">Error running tests</span>}
         </div>
       </div>
     </div>

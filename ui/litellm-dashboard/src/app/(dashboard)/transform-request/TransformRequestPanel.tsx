@@ -4,6 +4,9 @@ import { CopyOutlined } from "@ant-design/icons";
 import { Title } from "@tremor/react";
 import { transformRequestCall } from "@/components/networking";
 import NotificationsManager from "@/components/molecules/notifications_manager";
+import { Card } from "@/components/ui/card";
+import { cn } from "@/lib/cva.config";
+
 interface TransformRequestPanelProps {
   accessToken: string | null;
 }
@@ -128,128 +131,55 @@ ${formattedBody}
   };
 
   return (
-    <div className="w-full m-2" style={{ overflow: "hidden" }}>
+    <div className="m-2 w-full overflow-hidden text-foreground">
       <Title>Playground</Title>
-      <p className="text-sm text-gray-500">See how LiteLLM transforms your request for the specified provider.</p>
-      <div
-        style={{
-          display: "flex",
-          gap: "16px",
-          width: "100%",
-          minWidth: 0,
-          overflow: "hidden",
-        }}
-        className="mt-4"
-      >
-        {/* Original Request Panel */}
-        <div
-          style={{
-            flex: "1 1 50%",
-            display: "flex",
-            flexDirection: "column",
-            border: "1px solid #e8e8e8",
-            borderRadius: "8px",
-            padding: "24px",
-            overflow: "hidden",
-            maxHeight: "600px",
-            minWidth: 0,
-          }}
+      <p className="text-sm text-muted-foreground">
+        See how LiteLLM transforms your request for the specified provider.
+      </p>
+      <div className="mt-4 flex w-full min-w-0 gap-4 overflow-hidden">
+        <Card
+          data-testid="original-request-pane"
+          className="max-h-[600px] min-w-0 flex-[1_1_50%] gap-0 overflow-hidden rounded-lg p-6"
         >
-          <div style={{ marginBottom: "24px" }}>
-            <h2 style={{ fontSize: "24px", fontWeight: "bold", margin: "0 0 4px 0" }}>Original Request</h2>
-            <p style={{ color: "#666", margin: 0 }}>
+          <div className="mb-6">
+            <h2 className="mb-1 text-2xl font-bold text-foreground">Original Request</h2>
+            <p className="m-0 text-muted-foreground">
               The request you would send to LiteLLM /chat/completions endpoint.
             </p>
           </div>
 
           <textarea
-            style={{
-              flex: "1 1 auto",
-              width: "100%",
-              minHeight: "240px",
-              padding: "16px",
-              border: "1px solid #e8e8e8",
-              borderRadius: "6px",
-              fontFamily: "monospace",
-              fontSize: "14px",
-              resize: "none",
-              marginBottom: "24px",
-              overflow: "auto",
-            }}
+            className={cn(
+              "mb-6 min-h-[240px] w-full flex-[1_1_auto] resize-none overflow-auto rounded-md p-4 font-mono text-sm",
+              "border border-border bg-background text-foreground focus:ring-2 focus:ring-ring focus:outline-none",
+            )}
             value={originalRequestJSON}
             onChange={(e) => setOriginalRequestJSON(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Press Cmd/Ctrl + Enter to transform"
           />
 
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              marginTop: "auto",
-            }}
-          >
-            <Button
-              type="primary"
-              style={{
-                backgroundColor: "#000",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-              }}
-              onClick={handleTransform}
-              loading={isLoading}
-            >
+          <div className="mt-auto flex justify-end">
+            <Button type="primary" className="flex items-center gap-2" onClick={handleTransform} loading={isLoading}>
               <span>Transform</span>
               <span>→</span>
             </Button>
           </div>
-        </div>
+        </Card>
 
-        {/* Transformed Request Panel */}
-        <div
-          style={{
-            flex: "1 1 50%",
-            display: "flex",
-            flexDirection: "column",
-            border: "1px solid #e8e8e8",
-            borderRadius: "8px",
-            padding: "24px",
-            overflow: "hidden",
-            maxHeight: "800px",
-            minWidth: 0,
-          }}
+        <Card
+          data-testid="transformed-request-pane"
+          className="max-h-[800px] min-w-0 flex-[1_1_50%] gap-0 overflow-hidden rounded-lg p-6"
         >
-          <div style={{ marginBottom: "24px" }}>
-            <h2 style={{ fontSize: "24px", fontWeight: "bold", margin: "0 0 4px 0" }}>Transformed Request</h2>
-            <p style={{ color: "#666", margin: 0 }}>How LiteLLM transforms your request for the specified provider.</p>
+          <div className="mb-6">
+            <h2 className="mb-1 text-2xl font-bold text-foreground">Transformed Request</h2>
+            <p className="m-0 text-muted-foreground">How LiteLLM transforms your request for the specified provider.</p>
             <br />
-            <p style={{ color: "#666", margin: 0 }} className="text-xs">
-              Note: Sensitive headers are not shown.
-            </p>
+            <p className="m-0 text-xs text-muted-foreground">Note: Sensitive headers are not shown.</p>
           </div>
 
-          <div
-            style={{
-              position: "relative",
-              backgroundColor: "#f5f5f5",
-              borderRadius: "6px",
-              flex: "1 1 auto",
-              display: "flex",
-              flexDirection: "column",
-              overflow: "hidden",
-            }}
-          >
-            <pre
-              style={{
-                padding: "16px",
-                fontFamily: "monospace",
-                fontSize: "14px",
-                margin: 0,
-                overflow: "auto",
-                flex: "1 1 auto",
-              }}
-            >
+          <div className="relative flex flex-[1_1_auto] flex-col overflow-hidden rounded-md bg-muted text-foreground">
+            <pre className="m-0 flex-[1_1_auto] overflow-auto p-4 font-mono text-sm">
               {transformedResponse ||
                 `curl -X POST \\
   https://api.openai.com/v1/chat/completions \\
@@ -270,11 +200,7 @@ ${formattedBody}
             <Button
               type="text"
               icon={<CopyOutlined />}
-              style={{
-                position: "absolute",
-                right: "8px",
-                top: "8px",
-              }}
+              className="absolute top-2 right-2"
               size="small"
               onClick={() => {
                 navigator.clipboard.writeText(transformedResponse || "");
@@ -282,12 +208,17 @@ ${formattedBody}
               }}
             />
           </div>
-        </div>
+        </Card>
       </div>
-      <div className="mt-4 text-right w-full">
-        <p className="text-sm text-gray-500">
+      <div className="mt-4 w-full text-right">
+        <p className="text-sm text-muted-foreground">
           Found an error? File an issue{" "}
-          <a href="https://github.com/BerriAI/litellm/issues" target="_blank" rel="noopener noreferrer">
+          <a
+            href="https://github.com/BerriAI/litellm/issues"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary underline-offset-4 hover:underline"
+          >
             here
           </a>
           .

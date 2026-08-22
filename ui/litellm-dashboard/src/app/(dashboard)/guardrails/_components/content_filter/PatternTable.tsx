@@ -80,7 +80,7 @@ const PatternTable: React.FC<PatternTableProps> = ({ patterns, onActionChange, o
   ];
 
   if (patterns.length === 0) {
-    return <div style={{ textAlign: "center", padding: "40px 0", color: "#999" }}>No patterns added.</div>;
+    return <div className="py-10 text-center text-muted-foreground">No patterns added.</div>;
   }
 
   return <Table dataSource={patterns} columns={columns} rowKey="id" pagination={false} size="small" />;

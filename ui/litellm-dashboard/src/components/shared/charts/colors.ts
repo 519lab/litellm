@@ -23,7 +23,7 @@ export const CHART_COLOR_HEX = {
   rose: "#f43f5e",
 } as const;
 
-export type ChartColor = keyof typeof CHART_COLOR_HEX | `#${string}`;
+export type ChartColor = keyof typeof CHART_COLOR_HEX | `#${string}` | `var(--${string})`;
 
 export const DEFAULT_COLOR_CYCLE: readonly ChartColor[] = [
   "blue",

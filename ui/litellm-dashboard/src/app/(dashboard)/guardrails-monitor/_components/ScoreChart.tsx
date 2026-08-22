@@ -1,11 +1,13 @@
 import React from "react";
-import { BarChart } from "@/components/shared/charts";
+import { BarChart, type ChartColor } from "@/components/shared/charts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 /**
  * Overview chart: Request Outcomes Over Time (passed vs blocked).
  * Stacked bar chart. Data from usage/overview API (chart array).
  */
+const OUTCOME_COLORS: readonly ChartColor[] = ["var(--chart-2)", "var(--chart-1)"];
+
 interface ScoreChartProps {
   data?: Array<{ date: string; passed: number; blocked: number }>;
 }
@@ -25,7 +27,7 @@ export function ScoreChart({ data }: ScoreChartProps) {
               data={chartData}
               index="date"
               categories={["passed", "blocked"]}
-              colors={["green", "red"]}
+              colors={OUTCOME_COLORS}
               valueFormatter={(v) => v.toLocaleString()}
               yAxisWidth={48}
               showLegend={true}
@@ -33,7 +35,7 @@ export function ScoreChart({ data }: ScoreChartProps) {
               className="h-full"
             />
           ) : (
-            <div className="flex items-center justify-center h-full text-sm text-gray-500">
+            <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
               No chart data for this period
             </div>
           )}

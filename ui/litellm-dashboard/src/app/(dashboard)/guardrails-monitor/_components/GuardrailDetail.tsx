@@ -17,9 +17,9 @@ interface GuardrailDetailProps {
 }
 
 const statusColors: Record<string, { bg: string; text: string; dot: string }> = {
-  healthy: { bg: "bg-green-50", text: "text-green-700", dot: "bg-green-500" },
-  warning: { bg: "bg-amber-50", text: "text-amber-700", dot: "bg-amber-500" },
-  critical: { bg: "bg-red-50", text: "text-red-700", dot: "bg-red-500" },
+  healthy: { bg: "bg-muted", text: "text-foreground", dot: "bg-muted-foreground" },
+  warning: { bg: "bg-amber-500/10", text: "text-amber-600 dark:text-amber-400", dot: "bg-amber-500" },
+  critical: { bg: "bg-destructive/10", text: "text-destructive", dot: "bg-destructive" },
 };
 
 export function GuardrailDetail({ guardrailId, onBack, accessToken = null, startDate, endDate }: GuardrailDetailProps) {
@@ -102,7 +102,7 @@ export function GuardrailDetail({ guardrailId, onBack, accessToken = null, start
         <Button type="link" icon={<ArrowLeftOutlined />} onClick={onBack} className="pl-0 mb-4">
           Back to Overview
         </Button>
-        <p className="text-red-600">Failed to load guardrail details.</p>
+        <p className="text-destructive">Failed to load guardrail details.</p>
       </div>
     );
   }
@@ -162,10 +162,14 @@ export function GuardrailDetail({ guardrailId, onBack, accessToken = null, start
                 label="Fail Rate"
                 value={`${data.failRate}%`}
                 valueColor={
-                  data.failRate > 15 ? "text-red-600" : data.failRate > 5 ? "text-amber-600" : "text-green-600"
+                  data.failRate > 15
+                    ? "text-destructive"
+                    : data.failRate > 5
+                      ? "text-amber-600 dark:text-amber-400"
+                      : "text-foreground"
                 }
                 subtitle={`${Math.round((data.requestsEvaluated * data.failRate) / 100).toLocaleString()} blocked`}
-                icon={data.failRate > 15 ? <WarningOutlined className="text-red-400" /> : undefined}
+                icon={data.failRate > 15 ? <WarningOutlined className="text-destructive" /> : undefined}
               />
             </Col>
             <Col xs={12} md={8}>
@@ -175,11 +179,11 @@ export function GuardrailDetail({ guardrailId, onBack, accessToken = null, start
                 valueColor={
                   data.avgLatency != null
                     ? data.avgLatency > 150
-                      ? "text-red-600"
+                      ? "text-destructive"
                       : data.avgLatency > 50
-                        ? "text-amber-600"
-                        : "text-green-600"
-                    : "text-gray-500"
+                        ? "text-amber-600 dark:text-amber-400"
+                        : "text-foreground"
+                    : "text-muted-foreground"
                 }
                 subtitle={data.avgLatency != null ? "Per request (avg)" : "No data"}
               />

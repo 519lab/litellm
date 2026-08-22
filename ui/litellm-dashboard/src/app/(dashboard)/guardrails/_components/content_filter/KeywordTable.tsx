@@ -61,7 +61,7 @@ const KeywordTable: React.FC<KeywordTableProps> = ({ keywords, onActionChange, o
   ];
 
   if (keywords.length === 0) {
-    return <div style={{ textAlign: "center", padding: "40px 0", color: "#999" }}>No keywords added.</div>;
+    return <div className="py-10 text-center text-muted-foreground">No keywords added.</div>;
   }
 
   return <Table dataSource={keywords} columns={columns} rowKey="id" pagination={false} size="small" />;
