@@ -8,12 +8,16 @@ LLAMACPP_API_BASE = os.getenv("LLAMACPP_API_BASE", "http://127.0.0.1:56669")
 _LEN_CAP = 256
 MAX_SCHEMA_DEPTH: int = 20
 
-_STRIP_KEYS = frozenset({
-    "pattern",
-    "minimum", "maximum",
-    "exclusiveMinimum", "exclusiveMaximum",
-    "multipleOf",
-})
+_STRIP_KEYS = frozenset(
+    {
+        "pattern",
+        "minimum",
+        "maximum",
+        "exclusiveMinimum",
+        "exclusiveMaximum",
+        "multipleOf",
+    }
+)
 
 
 def _sanitize_schema(schema: dict, depth: int = 0) -> bool:
@@ -47,6 +51,11 @@ def _sanitize_schema(schema: dict, depth: int = 0) -> bool:
             for sub in val:
                 if _sanitize_schema(sub, depth + 1):
                     changed = True
+    prefix = schema.get("prefixItems")
+    if isinstance(prefix, list):
+        for sub in prefix:
+            if _sanitize_schema(sub, depth + 1):
+                changed = True
     for key in ("anyOf", "oneOf", "allOf"):
         val = schema.get(key)
         if isinstance(val, list):
@@ -66,7 +75,6 @@ def _sanitize_schema(schema: dict, depth: int = 0) -> bool:
 
 
 class LlamaCppPatternStripper(CustomLogger):
-
     def _is_llamacpp(self, kwargs: dict[str, Any]) -> bool:
         api_base = kwargs.get("api_base") or (kwargs.get("litellm_params") or {}).get("api_base", "")
         return isinstance(api_base, str) and api_base.startswith(LLAMACPP_API_BASE)

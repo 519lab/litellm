@@ -249,3 +249,41 @@ def test_recursion_guard_halts_at_max_depth():
     for _ in range(30):
         schema = {"type": "object", "properties": {"child": schema}}
     _sanitize_schema(schema)
+
+
+def test_prefix_items_traversed():
+    """Regression: pattern inside prefixItems caused a 400 from llama.cpp grammar builder."""
+    schema = {
+        "type": "array",
+        "prefixItems": [
+            {"type": "string", "pattern": "[a-z]+"},
+            {"type": "number", "minimum": 0},
+        ],
+    }
+    _sanitize_schema(schema)
+    assert "pattern" not in schema["prefixItems"][0]
+    assert "minimum" not in schema["prefixItems"][1]
+
+
+@pytest.mark.asyncio
+async def test_hook_sanitizes_prefix_items_in_response_format(hook):
+    """End-to-end: prefixItems pattern in response_format is stripped before reaching llama.cpp."""
+    kwargs = _llamacpp_kwargs(
+        response_format={
+            "type": "json_schema",
+            "json_schema": {
+                "name": "output",
+                "schema": {
+                    "type": "array",
+                    "prefixItems": [
+                        {"type": "string", "pattern": "[a-z]+"},
+                        {"type": "integer"},
+                    ],
+                },
+            },
+        }
+    )
+    result = await hook.async_pre_call_deployment_hook(kwargs, call_type=None)
+    assert result is not None
+    items = result["response_format"]["json_schema"]["schema"]["prefixItems"]
+    assert "pattern" not in items[0]
