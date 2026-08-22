@@ -70,6 +70,11 @@ class _ProxyDBLogger(CustomLogger):
         request_route = user_api_key_dict.request_route
         if _ProxyDBLogger._should_track_errors_in_db() is False:
             return
+        elif user_api_key_dict.api_key is None:
+            # No key was present in the request at all — nothing to attribute this
+            # failure to in spend tracking. Avoids flooding spend_logs with rows
+            # from unauthenticated health pollers and similar noise.
+            return
         elif request_route is not None and not (
             RouteChecks.is_llm_api_route(route=request_route) or RouteChecks.is_info_route(route=request_route)
         ):
