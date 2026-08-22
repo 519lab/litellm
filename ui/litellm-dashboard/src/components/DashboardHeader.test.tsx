@@ -19,11 +19,6 @@ vi.mock("@/app/(dashboard)/hooks/uiSettings/useUISettings", () => ({ useUISettin
 vi.mock("next/navigation", () => ({ usePathname: () => "/ui/" }));
 vi.mock("@/utils/migratedPages", () => ({ migratedHref: (seg: string) => `/ui/${seg}` }));
 vi.mock("@/hooks/useWorker", () => ({ useWorker: () => ({ isControlPlane: false, selectedWorker: null }) }));
-vi.mock("@/app/(dashboard)/hooks/useDisableShowPrompts", () => ({ useDisableShowPrompts: () => false }));
-vi.mock("@/components/Navbar/BlogDropdown/BlogDropdown", () => ({ BlogDropdown: () => null }));
-vi.mock("@/components/Navbar/CommunityEngagementButtons/CommunityEngagementButtons", () => ({
-  CommunityEngagementButtons: () => null,
-}));
 vi.mock("@/components/Navbar/NotificationsBell/NotificationsBell", () => ({ NotificationsBell: () => null }));
 vi.mock("@/components/Navbar/WorkerDropdown/WorkerDropdown", () => ({ default: () => null }));
 
@@ -45,6 +40,14 @@ describe("DashboardHeader breadcrumb", () => {
       fireEvent.click(selector);
     });
     await waitFor(() => expect(screen.getByText("Chat")).toBeInTheDocument());
+  });
+
+  it("carries no marketing links (Docs, Blog, community) in the top bar", () => {
+    render(<DashboardHeader page="logs" />);
+
+    expect(screen.queryByRole("link", { name: /docs/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/blog/i)).not.toBeInTheDocument();
+    expect(document.querySelector('a[href*="slack"], a[href*="github.com"]')).toBeNull();
   });
 
   it("keeps the AI Gateway selector at the root even when there is nothing to switch to (discovery)", () => {

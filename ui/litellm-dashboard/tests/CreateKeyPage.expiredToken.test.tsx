@@ -76,6 +76,7 @@ vi.mock("@/components/networking", () => {
     getUiSettings: vi.fn().mockResolvedValue({ values: {}, field_schema: {} }),
     // Used to build the redirect URL
     proxyBaseUrl: "https://example.com",
+    serverRootPath: "/",
     // Called when decoding a valid token
     setGlobalLitellmHeaderName: vi.fn(),
     Organization: {},
@@ -243,7 +244,7 @@ describe("CreateKeyPage auth behavior", () => {
     expect(wroteDeletion).toBe(true);
   });
 
-  it("does NOT redirect when token is valid and renders the page content", async () => {
+  it("does NOT redirect to login when token is valid and lands on Logs", async () => {
     // Arrange: valid token in cookie
     setCookie("token=validtoken");
 
@@ -270,10 +271,11 @@ describe("CreateKeyPage auth behavior", () => {
       expect(window.location.replace).not.toHaveBeenCalled();
     });
 
-    // And the default page content appears (UserDashboard stub; chrome now lives in the layout)
+    const { useRouter } = await import("next/navigation");
     await waitFor(() => {
-      expect(screen.getByTestId("user-dashboard")).toBeInTheDocument();
+      expect(useRouter().replace).toHaveBeenCalledWith(expect.stringMatching(/\/logs$/));
     });
+    expect(screen.queryByTestId("user-dashboard")).not.toBeInTheDocument();
   });
 
   it("should not redirect when return URL only differs by query order", async () => {

@@ -1,6 +1,5 @@
 "use client";
 
-import ApiKeysDashboard from "@/app/(dashboard)/api-keys/ApiKeysDashboard";
 import LoadingScreen from "@/components/common_components/LoadingScreen";
 import { proxyBaseUrl } from "@/components/networking";
 import { useAuth } from "@/contexts/AuthContext";
@@ -42,12 +41,13 @@ function CreateKeyPageContent() {
   }, [redirectToLogin]);
 
   // Redirect legacy ?page= deep links (old bookmarks) to their path-based routes.
-  const isLegacyRedirect = explicitPage !== null && explicitPage in MIGRATED_PAGES;
+  const redirectTarget = explicitPage === null ? "logs" : MIGRATED_PAGES[explicitPage];
+  const isLegacyRedirect = redirectTarget !== undefined;
   useEffect(() => {
-    if (!authLoading && isLegacyRedirect) {
-      router.replace(migratedHref(MIGRATED_PAGES[explicitPage]));
+    if (!authLoading && token && isLegacyRedirect) {
+      router.replace(migratedHref(redirectTarget));
     }
-  }, [authLoading, isLegacyRedirect, explicitPage, router]);
+  }, [authLoading, token, isLegacyRedirect, redirectTarget, router]);
 
   // Check for a stored return URL after successful authentication
   // This handles the case where user comes back from SSO and we need to redirect to the original URL
@@ -90,7 +90,7 @@ function CreateKeyPageContent() {
     return <LoadingScreen />;
   }
 
-  return <ApiKeysDashboard />;
+  return <LoadingScreen />;
 }
 
 export default function CreateKeyPage() {

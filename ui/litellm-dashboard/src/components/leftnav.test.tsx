@@ -70,6 +70,13 @@ vi.mock("@/app/(dashboard)/hooks/useLogout", () => ({
   useLogout: () => vi.fn(),
 }));
 
+const openMore = async () => {
+  act(() => {
+    fireEvent.click(screen.getByRole("button", { name: /more/i }));
+  });
+  await waitFor(() => expect(screen.getByRole("button", { name: /more/i })).toHaveAttribute("aria-expanded", "true"));
+};
+
 const collectNavKeys = (): string[] =>
   menuGroups.flatMap((group) => group.items.flatMap((item) => [item.key, ...(item.children ?? []).map((c) => c.key)]));
 
@@ -80,20 +87,34 @@ describe("Sidebar (leftnav)", () => {
     collapsed: false,
   };
 
-  it("renders all top-level (non-nested) tabs for admin", () => {
+  it("renders the Gateway and Settings tabs for admin with More collapsed", () => {
     renderWithProviders(<Sidebar {...defaultProps} />);
 
-    const topLevelLabels = [
-      "Virtual Keys",
+    [
+      "Logs",
+      "Usage",
       "Playground",
+      "Virtual Keys",
       "Models + Endpoints",
-      "Agentic",
       "MCP Servers",
       "Guardrails",
+      "Settings",
+    ].forEach((label) => expect(screen.getByText(label)).toBeInTheDocument());
+    ["Agentic", "Policies", "Tools", "Teams", "Internal Users", "Budgets", "API Reference", "Experimental"].forEach(
+      (label) => expect(screen.queryByText(label)).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole("button", { name: /more/i })).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("reveals the secondary tabs when More is expanded", async () => {
+    renderWithProviders(<Sidebar {...defaultProps} />);
+    await openMore();
+
+    [
+      "Agentic",
+      "Skills",
       "Policies",
       "Tools",
-      "Usage",
-      "Logs",
       "Guardrails Monitor",
       "Teams",
       "Internal Users",
@@ -103,17 +124,20 @@ describe("Sidebar (leftnav)", () => {
       "API Reference",
       "AI Hub",
       "Learning Resources",
+      "Caching",
       "Experimental",
-      "Settings",
-    ];
+    ].forEach((label) => expect(screen.getByText(label)).toBeInTheDocument());
+  });
 
-    topLevelLabels.forEach((label) => {
-      expect(screen.getByText(label)).toBeInTheDocument();
-    });
+  it("opens More automatically when the selected page lives inside it", () => {
+    renderWithProviders(<Sidebar {...defaultProps} defaultSelectedKey="teams" />);
+    expect(screen.getByRole("button", { name: /more/i })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("Teams").closest("a")).toHaveAttribute("data-active", "true");
   });
 
   it("expands a nested tab to reveal its children (Tools > Search Tools)", async () => {
     renderWithProviders(<Sidebar {...defaultProps} />);
+    await openMore();
 
     expect(screen.queryByText("Search Tools")).not.toBeInTheDocument();
     act(() => {
@@ -161,8 +185,7 @@ describe("Sidebar (leftnav)", () => {
     it("shows Agents (under Agentic) to Admin Viewer (read-only)", async () => {
       mockUseAuthorized.mockReturnValueOnce(adminViewerAuth);
       renderWithProviders(<Sidebar {...defaultProps} />);
-      // Agents is now nested under the "Agentic" submenu — expand parent
-      // first to render the children, then assert Agents is visible.
+      await openMore();
       act(() => {
         fireEvent.click(screen.getByText("Agentic"));
       });
@@ -178,7 +201,7 @@ describe("Sidebar (leftnav)", () => {
     });
   });
 
-  it("should show Organizations tab for organization admins", () => {
+  it("should show Organizations tab for organization admins", async () => {
     mockUseAuthorized.mockReturnValueOnce({
       userId: "org-admin-user-id",
       accessToken: "test-access-token",
@@ -213,6 +236,7 @@ describe("Sidebar (leftnav)", () => {
     } as any);
 
     renderWithProviders(<Sidebar {...defaultProps} />);
+    await openMore();
 
     expect(screen.getByText("Organizations")).toBeInTheDocument();
   });
@@ -238,8 +262,9 @@ describe("Sidebar (leftnav)", () => {
     expect(label).toHaveClass("group-data-[collapsed=true]/sidebar:hidden");
   });
 
-  it("shows Cost Optimization with a Beta badge and no feature-flag gate", () => {
+  it("shows Cost Optimization with a Beta badge and no feature-flag gate", async () => {
     const { container } = renderWithProviders(<Sidebar {...defaultProps} enableProjectsUI={false} />);
+    await openMore();
 
     const costOptimization = container.querySelector('a[href*="cost-optimization"]');
     expect(costOptimization).not.toBeNull();
@@ -259,12 +284,12 @@ describe("Sidebar (leftnav)", () => {
 
 describe("getBreadcrumb", () => {
   it("resolves a top-level page to its section + title", () => {
-    expect(getBreadcrumb("api-keys")).toEqual({ section: "AI Gateway", title: "Virtual Keys" });
-    expect(getBreadcrumb("logs")).toEqual({ section: "Observability", title: "Logs" });
+    expect(getBreadcrumb("api-keys")).toEqual({ section: "Gateway", title: "Virtual Keys" });
+    expect(getBreadcrumb("teams")).toEqual({ section: "More", title: "Teams" });
   });
 
   it("resolves a nested child page to its parent section", () => {
-    expect(getBreadcrumb("search-tools")).toEqual({ section: "AI Gateway", title: "Search Tools" });
+    expect(getBreadcrumb("search-tools")).toEqual({ section: "More", title: "Search Tools" });
   });
 
   it("falls back to a prettified title with no section for unknown pages", () => {

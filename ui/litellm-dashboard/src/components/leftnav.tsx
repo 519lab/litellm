@@ -108,6 +108,7 @@ interface MenuGroup {
   groupLabel: string;
   items: MenuItem[];
   roles?: string[];
+  collapsible?: boolean;
 }
 
 // Menu groups organized by category - defined outside component for export.
@@ -115,9 +116,16 @@ interface MenuGroup {
 // icons changed to lucide as part of the sidebar redesign.
 const menuGroups: MenuGroup[] = [
   {
-    groupLabel: "AI GATEWAY",
+    groupLabel: "GATEWAY",
     items: [
-      { key: "api-keys", page: "api-keys", label: "Virtual Keys", icon: <KeyRound {...ICON} /> },
+      { key: "logs", page: "logs", label: "Logs", icon: <Activity {...ICON} /> },
+      {
+        key: "new_usage",
+        page: "new_usage",
+        icon: <BarChart3 {...ICON} />,
+        roles: [...all_admin_roles, ...internalUserRoles],
+        label: "Usage",
+      },
       {
         key: "llm-playground",
         page: "llm-playground",
@@ -125,6 +133,7 @@ const menuGroups: MenuGroup[] = [
         icon: <PlayCircle {...ICON} />,
         roles: rolesWithWriteAccess,
       },
+      { key: "api-keys", page: "api-keys", label: "Virtual Keys", icon: <KeyRound {...ICON} /> },
       {
         key: "models",
         page: "models",
@@ -132,6 +141,14 @@ const menuGroups: MenuGroup[] = [
         icon: <Network {...ICON} />,
         roles: rolesAllowedToViewWriteScopedPages,
       },
+      { key: "mcp-servers", page: "mcp-servers", label: "MCP Servers", icon: <Server {...ICON} /> },
+      { key: "guardrails", page: "guardrails", label: "Guardrails", icon: <Shield {...ICON} /> },
+    ],
+  },
+  {
+    groupLabel: "MORE",
+    collapsible: true,
+    items: [
       {
         key: "agentic",
         page: "agentic",
@@ -149,9 +166,7 @@ const menuGroups: MenuGroup[] = [
           { key: "memory", page: "memory", label: "Memory", icon: <Database {...ICON} /> },
         ],
       },
-      { key: "mcp-servers", page: "mcp-servers", label: "MCP Servers", icon: <Server {...ICON} /> },
       { key: "skills", page: "skills", label: "Skills", icon: <Blocks {...ICON} />, roles: all_admin_roles },
-      { key: "guardrails", page: "guardrails", label: "Guardrails", icon: <Shield {...ICON} /> },
       {
         key: "policies",
         page: "policies",
@@ -170,18 +185,6 @@ const menuGroups: MenuGroup[] = [
           { key: "tool-policies", page: "tool-policies", label: "Tool Policies", icon: <ShieldCheck {...ICON} /> },
         ],
       },
-    ],
-  },
-  {
-    groupLabel: "OBSERVABILITY",
-    items: [
-      {
-        key: "new_usage",
-        page: "new_usage",
-        icon: <BarChart3 {...ICON} />,
-        roles: [...all_admin_roles, ...internalUserRoles],
-        label: "Usage",
-      },
       {
         key: "cost-optimization",
         page: "cost-optimization",
@@ -193,7 +196,6 @@ const menuGroups: MenuGroup[] = [
           </span>
         ),
       },
-      { key: "logs", page: "logs", label: "Logs", icon: <Activity {...ICON} /> },
       {
         key: "guardrails-monitor",
         page: "guardrails-monitor",
@@ -201,11 +203,6 @@ const menuGroups: MenuGroup[] = [
         icon: <HeartPulse {...ICON} />,
         roles: [...all_admin_roles, ...internalUserRoles],
       },
-    ],
-  },
-  {
-    groupLabel: "ACCESS CONTROL",
-    items: [
       { key: "teams", page: "teams", label: "Teams", icon: <Users {...ICON} /> },
       {
         key: "projects",
@@ -234,11 +231,6 @@ const menuGroups: MenuGroup[] = [
         roles: all_admin_roles,
       },
       { key: "budgets", page: "budgets", label: "Budgets", icon: <Wallet {...ICON} />, roles: all_admin_roles },
-    ],
-  },
-  {
-    groupLabel: "DEVELOPER TOOLS",
-    items: [
       { key: "api_ref", page: "api_ref", label: "API Reference", icon: <Code2 {...ICON} /> },
       { key: "model-hub-table", page: "model-hub-table", label: "AI Hub", icon: <LayoutGrid {...ICON} /> },
       {
@@ -349,14 +341,28 @@ const findMenuItemKey = (page: string): string => {
       if (child) return child.key;
     }
   }
-  return "api-keys";
+  return "logs";
+};
+
+const groupOpenKey = (groupLabel: string): string => `group:${groupLabel}`;
+
+const initialOpenKeys = (page: string): string[] => {
+  const parent = findParentKey(page);
+  const group = menuGroups.find((g) => g.collapsible && g.groupLabel === findGroupLabel(page));
+  return [...(parent ? [parent] : []), ...(group ? [groupOpenKey(group.groupLabel)] : [])];
+};
+
+const findGroupLabel = (page: string): string | null => {
+  for (const group of menuGroups) {
+    if (group.items.some((item) => item.page === page || item.children?.some((c) => c.page === page)))
+      return group.groupLabel;
+  }
+  return null;
 };
 
 const SECTION_DISPLAY: Record<string, string> = {
-  "AI GATEWAY": "AI Gateway",
-  OBSERVABILITY: "Observability",
-  "ACCESS CONTROL": "Access Control",
-  "DEVELOPER TOOLS": "Developer Tools",
+  GATEWAY: "Gateway",
+  MORE: "More",
   SETTINGS: "Settings",
 };
 
@@ -405,10 +411,7 @@ const Sidebar_: React.FC<SidebarProps> = ({
   const version = healthData?.litellm_version;
   const selectedKey = findMenuItemKey(defaultSelectedKey);
 
-  const [openGroups, setOpenGroups] = useState<Set<string>>(() => {
-    const parent = findParentKey(defaultSelectedKey);
-    return new Set(parent ? [parent] : []);
-  });
+  const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set(initialOpenKeys(defaultSelectedKey)));
 
   // Keep the active page's parent group expanded as the user navigates, using the
   // "adjust state during render" pattern rather than an effect (avoids a
@@ -416,9 +419,9 @@ const Sidebar_: React.FC<SidebarProps> = ({
   const [prevSelectedKey, setPrevSelectedKey] = useState(defaultSelectedKey);
   if (defaultSelectedKey !== prevSelectedKey) {
     setPrevSelectedKey(defaultSelectedKey);
-    const parent = findParentKey(defaultSelectedKey);
-    if (parent && !openGroups.has(parent)) {
-      setOpenGroups((prev) => new Set(prev).add(parent));
+    const missing = initialOpenKeys(defaultSelectedKey).filter((k) => !openGroups.has(k));
+    if (missing.length > 0) {
+      setOpenGroups((prev) => new Set([...prev, ...missing]));
     }
   }
 
@@ -471,7 +474,7 @@ const Sidebar_: React.FC<SidebarProps> = ({
 
   const visibleGroups = menuGroups
     .filter((group) => !group.roles || group.roles.includes(userRole))
-    .map((group) => ({ groupLabel: group.groupLabel, items: filterItemsByRole(group.items) }))
+    .map((group) => ({ ...group, items: filterItemsByRole(group.items) }))
     .filter((group) => group.items.length > 0);
 
   const toggleGroup = (key: string) => {
@@ -609,13 +612,34 @@ const Sidebar_: React.FC<SidebarProps> = ({
 
       <ScrollArea className="min-h-0 flex-1">
         <nav className="flex flex-col gap-0.5 px-3 pb-3">
-          {visibleGroups.map((group, gi) => (
-            <SidebarGroup key={group.groupLabel}>
-              {gi > 0 && <SidebarSeparator className="hidden group-data-[collapsed=true]/sidebar:block" />}
-              <SidebarGroupLabel>{group.groupLabel}</SidebarGroupLabel>
-              <SidebarMenu>{group.items.map((item) => renderItem(item))}</SidebarMenu>
-            </SidebarGroup>
-          ))}
+          {visibleGroups.map((group, gi) => {
+            const groupKey = groupOpenKey(group.groupLabel);
+            const open = !group.collapsible || collapsed || openGroups.has(groupKey);
+            return (
+              <SidebarGroup key={group.groupLabel}>
+                {gi > 0 && <SidebarSeparator className="hidden group-data-[collapsed=true]/sidebar:block" />}
+                {group.collapsible ? (
+                  <button
+                    type="button"
+                    aria-expanded={open}
+                    aria-controls={`sidebar-group-${groupKey}`}
+                    onClick={() => toggleGroup(groupKey)}
+                    className="flex w-full cursor-pointer items-center justify-between rounded-md px-2 pt-3 pb-1.5 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring group-data-[collapsed=true]/sidebar:hidden"
+                  >
+                    <span>{group.groupLabel}</span>
+                    <ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} />
+                  </button>
+                ) : (
+                  <SidebarGroupLabel>{group.groupLabel}</SidebarGroupLabel>
+                )}
+                {open && (
+                  <SidebarMenu id={`sidebar-group-${groupKey}`}>
+                    {group.items.map((item) => renderItem(item))}
+                  </SidebarMenu>
+                )}
+              </SidebarGroup>
+            );
+          })}
         </nav>
       </ScrollArea>
 
