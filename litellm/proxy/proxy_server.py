@@ -7270,6 +7270,21 @@ def _pop_complete_sse_frame(buffer: str) -> tuple[str | None, str]:
     return buffer[:frame_end], buffer[frame_end:]
 
 
+_SSE_KEEPALIVE = object()
+_SSE_KEEPALIVE_INTERVAL = 30.0
+
+
+async def _with_sse_keepalive(aiter, interval: float = _SSE_KEEPALIVE_INTERVAL):
+    it = aiter.__aiter__()
+    while True:
+        try:
+            yield await asyncio.wait_for(it.__anext__(), timeout=interval)
+        except StopAsyncIteration:
+            return
+        except asyncio.TimeoutError:
+            yield _SSE_KEEPALIVE
+
+
 async def async_data_generator(
     response,
     user_api_key_dict: UserAPIKeyAuth,
@@ -7317,7 +7332,10 @@ async def async_data_generator(
         else:
             stream_iterator = response
 
-        async for chunk in stream_iterator:
+        async for chunk in _with_sse_keepalive(stream_iterator):
+            if chunk is _SSE_KEEPALIVE:
+                yield ": keep-alive\n\n"
+                continue
             if needs_per_chunk_hook:
                 ### CALL HOOKS ### - modify outgoing data
                 chunk, _str_so_far = await _apply_streaming_chunk_hooks(
