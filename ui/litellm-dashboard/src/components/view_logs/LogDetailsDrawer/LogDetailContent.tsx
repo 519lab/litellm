@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Typography, Descriptions, Card, Tag, Tabs, Alert, Collapse, Radio, Space, Spin } from "antd";
 import moment from "moment";
 import { LogEntry } from "../columns";
@@ -54,6 +55,7 @@ export interface LogDetailContentProps {
 export function LogDetailContent({ logEntry, isLoadingDetails = false, accessToken }: LogDetailContentProps) {
   const metadata = logEntry.metadata || {};
   const hasError = metadata.status === "failure";
+  const hasCost = (logEntry.spend ?? 0) > 0;
   const errorInfo = hasError ? metadata.error_information : null;
 
   const hasMessages = checkHasMessages(logEntry.messages);
@@ -139,17 +141,18 @@ export function LogDetailContent({ logEntry, isLoadingDetails = false, accessTok
       {/* Metrics */}
       <MetricsSection logEntry={logEntry} metadata={metadata} />
 
-      {/* Cost Breakdown */}
-      <CostBreakdownViewer
-        costBreakdown={metadata?.cost_breakdown}
-        totalSpend={logEntry.spend ?? 0}
-        promptTokens={logEntry.prompt_tokens}
-        completionTokens={logEntry.completion_tokens}
-        cacheHit={logEntry.cache_hit}
-        rawInputTokens={metadata?.additional_usage_values?.prompt_tokens_details?.text_tokens}
-        cacheReadTokens={metadata?.additional_usage_values?.cache_read_input_tokens}
-        cacheCreationTokens={metadata?.additional_usage_values?.cache_creation_input_tokens}
-      />
+      {hasCost && (
+        <CostBreakdownViewer
+          costBreakdown={metadata?.cost_breakdown}
+          totalSpend={logEntry.spend ?? 0}
+          promptTokens={logEntry.prompt_tokens}
+          completionTokens={logEntry.completion_tokens}
+          cacheHit={logEntry.cache_hit}
+          rawInputTokens={metadata?.additional_usage_values?.prompt_tokens_details?.text_tokens}
+          cacheReadTokens={metadata?.additional_usage_values?.cache_read_input_tokens}
+          cacheCreationTokens={metadata?.additional_usage_values?.cache_creation_input_tokens}
+        />
+      )}
 
       {/* Tools */}
       <ToolsSection log={logEntry} />
@@ -278,6 +281,17 @@ function getUncachedInputTextTokens(metadata: Record<string, any>): number | und
   return Number.isFinite(n) ? n : undefined;
 }
 
+const formatRetries = (attempted: number | null | undefined, max: number | null | undefined): React.ReactNode => {
+  if (attempted === undefined || attempted === null) return "-";
+  if (attempted === 0) return <Badge variant="outline">None</Badge>;
+  return max === undefined || max === null ? String(attempted) : `${attempted} / ${max}`;
+};
+
+interface Metric {
+  readonly label: string;
+  readonly value: React.ReactNode;
+}
+
 function MetricsSection({ logEntry, metadata }: { logEntry: LogEntry; metadata: Record<string, any> }) {
   const completionStartTime = logEntry.completionStartTime;
   const ttftMs =
@@ -285,97 +299,73 @@ function MetricsSection({ logEntry, metadata }: { logEntry: LogEntry; metadata: 
       ? new Date(completionStartTime).getTime() - new Date(logEntry.startTime).getTime()
       : null;
 
-  const hasCacheActivity =
-    logEntry.cache_hit ||
-    (metadata?.additional_usage_values?.cache_read_input_tokens &&
-      metadata.additional_usage_values.cache_read_input_tokens > 0);
-
+  const cacheReadTokens: number = metadata?.additional_usage_values?.cache_read_input_tokens ?? 0;
+  const cacheCreationTokens: number = metadata?.additional_usage_values?.cache_creation_input_tokens ?? 0;
+  const hasCacheActivity = !!logEntry.cache_hit || cacheReadTokens > 0;
   const cacheHitValue = String(logEntry.cache_hit ?? "None");
-  const cacheHitColor =
-    cacheHitValue.toLowerCase() === "true" ? "green" : cacheHitValue.toLowerCase() === "false" ? "red" : "default";
+  const cacheHitVariant = cacheHitValue.toLowerCase() === "true" ? "default" : "outline";
 
   const uncachedInputTokens = getUncachedInputTextTokens(metadata);
   const showAnthropicMessagesInputOutput =
     logEntry.call_type === "anthropic_messages" && uncachedInputTokens !== undefined;
 
-  return (
-    <div className="bg-white rounded-lg shadow-sm w-full max-w-full overflow-hidden mb-6">
-      <Card title="Metrics" size="small" style={{ marginBottom: 0 }}>
-        <Descriptions column={2} size="small">
-          {showAnthropicMessagesInputOutput ? (
-            <>
-              <Descriptions.Item label="Input Tokens">{formatNumberWithCommas(uncachedInputTokens)}</Descriptions.Item>
-              <Descriptions.Item label="Output Tokens">
-                {formatNumberWithCommas(logEntry.completion_tokens)}
-              </Descriptions.Item>
-            </>
-          ) : (
-            <Descriptions.Item label="Tokens">
+  const retriesValue = formatRetries(metadata?.attempted_retries, metadata?.max_retries);
+
+  const overheadMs: number | null | undefined = metadata?.litellm_overhead_time_ms;
+
+  const metrics: readonly Metric[] = [
+    ...(showAnthropicMessagesInputOutput
+      ? [
+          { label: "Input Tokens", value: formatNumberWithCommas(uncachedInputTokens) },
+          { label: "Output Tokens", value: formatNumberWithCommas(logEntry.completion_tokens) },
+        ]
+      : [
+          {
+            label: "Tokens",
+            value: (
               <TokenFlow
                 prompt={logEntry.prompt_tokens}
                 completion={logEntry.completion_tokens}
                 total={logEntry.total_tokens}
               />
-            </Descriptions.Item>
-          )}
-          <Descriptions.Item label="Cost">${formatNumberWithCommas(logEntry.spend || 0, 8)}</Descriptions.Item>
-          <Descriptions.Item label="Duration">
-            {logEntry.request_duration_ms != null ? (logEntry.request_duration_ms / 1000).toFixed(3) : "-"} s
-          </Descriptions.Item>
-          {ttftMs != null && ttftMs > 0 && (
-            <Descriptions.Item label="Time to First Token">{(ttftMs / 1000).toFixed(3)} s</Descriptions.Item>
-          )}
+            ),
+          },
+        ]),
+    ...((logEntry.spend ?? 0) > 0 ? [{ label: "Cost", value: `$${formatNumberWithCommas(logEntry.spend, 8)}` }] : []),
+    {
+      label: "Duration",
+      value: `${logEntry.request_duration_ms != null ? (logEntry.request_duration_ms / 1000).toFixed(3) : "-"} s`,
+    },
+    ...(ttftMs != null && ttftMs > 0
+      ? [{ label: "Time to First Token", value: `${(ttftMs / 1000).toFixed(3)} s` }]
+      : []),
+    ...(hasCacheActivity
+      ? [{ label: "Cache Hit", value: <Badge variant={cacheHitVariant}>{cacheHitValue}</Badge> }]
+      : []),
+    ...(cacheReadTokens > 0 ? [{ label: "Cache Read Tokens", value: formatNumberWithCommas(cacheReadTokens) }] : []),
+    ...(cacheCreationTokens > 0
+      ? [{ label: "Cache Creation Tokens", value: formatNumberWithCommas(cacheCreationTokens) }]
+      : []),
+    ...(overheadMs !== undefined && overheadMs !== null
+      ? [{ label: "LiteLLM Overhead", value: `${overheadMs.toFixed(2)} ms` }]
+      : []),
+    { label: "Retries", value: retriesValue },
+    { label: "Start Time", value: moment(logEntry.startTime).format("YYYY-MM-DDTHH:mm:ss.SSS[Z]") },
+    { label: "End Time", value: moment(logEntry.endTime).format("YYYY-MM-DDTHH:mm:ss.SSS[Z]") },
+  ];
 
-          {hasCacheActivity && (
-            <>
-              <Descriptions.Item label="Cache Hit">
-                <Tag color={cacheHitColor}>{cacheHitValue}</Tag>
-              </Descriptions.Item>
-              {metadata?.additional_usage_values?.cache_read_input_tokens > 0 && (
-                <Descriptions.Item label="Cache Read Tokens">
-                  {formatNumberWithCommas(metadata.additional_usage_values.cache_read_input_tokens)}
-                </Descriptions.Item>
-              )}
-              {metadata?.additional_usage_values?.cache_creation_input_tokens > 0 && (
-                <Descriptions.Item label="Cache Creation Tokens">
-                  {formatNumberWithCommas(metadata.additional_usage_values.cache_creation_input_tokens)}
-                </Descriptions.Item>
-              )}
-            </>
-          )}
-
-          {metadata?.litellm_overhead_time_ms !== undefined && metadata.litellm_overhead_time_ms !== null && (
-            <Descriptions.Item label="LiteLLM Overhead">
-              {metadata.litellm_overhead_time_ms.toFixed(2)} ms
-            </Descriptions.Item>
-          )}
-
-          <Descriptions.Item label="Retries">
-            {metadata?.attempted_retries !== undefined && metadata?.attempted_retries !== null ? (
-              metadata.attempted_retries > 0 ? (
-                <>
-                  {metadata.attempted_retries}
-                  {metadata.max_retries !== undefined && metadata.max_retries !== null
-                    ? ` / ${metadata.max_retries}`
-                    : ""}
-                </>
-              ) : (
-                <Tag color="green">None</Tag>
-              )
-            ) : (
-              "-"
-            )}
-          </Descriptions.Item>
-
-          <Descriptions.Item label="Start Time">
-            {moment(logEntry.startTime).format("YYYY-MM-DDTHH:mm:ss.SSS[Z]")}
-          </Descriptions.Item>
-          <Descriptions.Item label="End Time">
-            {moment(logEntry.endTime).format("YYYY-MM-DDTHH:mm:ss.SSS[Z]")}
-          </Descriptions.Item>
-        </Descriptions>
-      </Card>
-    </div>
+  return (
+    <section className="mb-6 w-full max-w-full overflow-hidden rounded-lg border border-border bg-background">
+      <h3 className="border-b border-border px-4 py-2 text-sm font-medium text-foreground">Metrics</h3>
+      <dl className="grid grid-cols-1 gap-x-6 gap-y-3 px-4 py-3 sm:grid-cols-2 md:grid-cols-3">
+        {metrics.map((metric) => (
+          <div key={metric.label} className="flex min-w-0 flex-col gap-0.5">
+            <dt className="text-xs text-muted-foreground">{metric.label}</dt>
+            <dd className="truncate text-sm tabular-nums text-foreground">{metric.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
   );
 }
 

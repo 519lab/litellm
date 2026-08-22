@@ -78,7 +78,7 @@ export function SectionHeader({
         )}
 
         {/* Cost */}
-        {cost !== undefined && (
+        {cost !== undefined && cost > 0 && (
           <Text type="secondary" style={{ fontSize: 12 }}>
             Cost: ${cost.toFixed(6)}
           </Text>

@@ -113,6 +113,41 @@ describe("LogDetailContent", () => {
     expect(screen.getAllByText("$0.00200000").length).toBeGreaterThanOrEqual(1);
   });
 
+  it("hides the Cost metric and the Cost Breakdown when spend is zero", () => {
+    render(<LogDetailContent logEntry={createLogEntry({ spend: 0, metadata: { status: "success" } })} />);
+
+    expect(screen.getByText("Metrics")).toBeInTheDocument();
+    expect(screen.queryByText("Cost")).not.toBeInTheDocument();
+    expect(screen.queryByText("Cost Breakdown")).not.toBeInTheDocument();
+    expect(screen.queryByText(/\$0\.00000000/)).not.toBeInTheDocument();
+  });
+
+  it("hides the Cost metric and the Cost Breakdown when spend is missing", () => {
+    render(
+      <LogDetailContent
+        logEntry={createLogEntry({ spend: undefined as unknown as number, metadata: { status: "success" } })}
+      />,
+    );
+
+    expect(screen.queryByText("Cost")).not.toBeInTheDocument();
+    expect(screen.queryByText("Cost Breakdown")).not.toBeInTheDocument();
+  });
+
+  it("shows the Cost metric and the Cost Breakdown when spend is nonzero", () => {
+    render(<LogDetailContent logEntry={createLogEntry({ spend: 0.002, metadata: { status: "success" } })} />);
+
+    expect(screen.getByText("Cost")).toBeInTheDocument();
+    expect(screen.getByText("Cost Breakdown")).toBeInTheDocument();
+  });
+
+  it("renders the Metrics card as a definition list", () => {
+    render(<LogDetailContent logEntry={createLogEntry()} />);
+
+    const duration = screen.getByText("Duration");
+    expect(duration.tagName).toBe("DT");
+    expect(duration.closest("dl")).not.toBeNull();
+  });
+
   it("should show Input Tokens and Output Tokens for anthropic_messages when uncached text_tokens exist", () => {
     render(
       <LogDetailContent
@@ -299,7 +334,7 @@ describe("LogDetailContent", () => {
     expect(screen.queryByText("LiteLLM Overhead")).not.toBeInTheDocument();
   });
 
-  const retriesItem = () => screen.getByText("Retries").closest(".ant-descriptions-item") as HTMLElement;
+  const retriesItem = () => screen.getByText("Retries").closest("div") as HTMLElement;
 
   it("should display attempted_retries / max_retries for Retries when attempted_retries > 0", () => {
     render(
@@ -315,7 +350,7 @@ describe("LogDetailContent", () => {
     render(<LogDetailContent logEntry={createLogEntry({ metadata: { status: "success", attempted_retries: 0 } })} />);
 
     const noneTag = within(retriesItem()).getByText("None");
-    expect(noneTag.closest(".ant-tag")).toHaveClass("ant-tag-green");
+    expect(noneTag).toHaveAttribute("data-slot", "badge");
   });
 
   it("should display '-' for Retries when attempted_retries is absent from metadata", () => {

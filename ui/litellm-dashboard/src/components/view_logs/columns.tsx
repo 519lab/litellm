@@ -118,13 +118,16 @@ export const createColumns = (sortProps?: LogsSortProps): ColumnDef<LogEntry>[] 
           />
         )
       : "Time",
+    id: "startTime",
     accessorKey: "startTime",
+    meta: { label: "Time" },
     size: 200,
     cell: (info: any) => <DateCell value={info.getValue()} />,
   },
   {
     header: "Type",
     id: "type",
+    meta: { label: "Type" },
     size: 90,
     cell: (info: any) => {
       const row = info.row.original;
@@ -169,7 +172,9 @@ export const createColumns = (sortProps?: LogsSortProps): ColumnDef<LogEntry>[] 
   },
   {
     header: "Status",
+    id: "status",
     accessorKey: "metadata.status",
+    meta: { label: "Status" },
     size: 100,
     cell: (info: any) => {
       const status = info.getValue() || "Success";
@@ -179,15 +184,20 @@ export const createColumns = (sortProps?: LogsSortProps): ColumnDef<LogEntry>[] 
   },
   {
     header: "Session ID",
+    id: "session_id",
     accessorKey: "session_id",
+    meta: { label: "Session ID" },
     size: 120,
     cell: (info: any) => <IdCell value={info.getValue()} onClick={info.row.original.onSessionClick} />,
   },
 
   {
     header: "Request ID",
+    id: "request_id",
     accessorKey: "request_id",
-    cell: (info: any) => <IdCell value={info.getValue()} variant="plain" />,
+    meta: { label: "Request ID" },
+    size: 300,
+    cell: (info: any) => <IdCell value={info.getValue()} variant="plain" className="max-w-[38ch]" />,
   },
   {
     header: sortProps
@@ -201,9 +211,10 @@ export const createColumns = (sortProps?: LogsSortProps): ColumnDef<LogEntry>[] 
           />
         )
       : "Cost",
+    id: "spend",
     accessorKey: "spend",
     size: 110,
-    meta: { numeric: true },
+    meta: { numeric: true, label: "Cost" },
     cell: (info: any) => {
       const row = info.row.original;
       const mcpCount = row.mcp_tool_call_count || 0;
@@ -240,8 +251,9 @@ export const createColumns = (sortProps?: LogsSortProps): ColumnDef<LogEntry>[] 
           />
         )
       : "Duration (s)",
+    id: "request_duration_ms",
     accessorKey: "request_duration_ms",
-    meta: { numeric: true },
+    meta: { numeric: true, label: "Duration (s)" },
     cell: (info: any) => {
       const ms = info.getValue();
       if (ms == null) return <span>-</span>;
@@ -265,8 +277,9 @@ export const createColumns = (sortProps?: LogsSortProps): ColumnDef<LogEntry>[] 
           />
         )
       : "TTFT (s)",
+    id: "ttft",
     accessorKey: "completionStartTime",
-    meta: { numeric: true },
+    meta: { numeric: true, label: "TTFT (s)" },
     cell: (info: any) => {
       const row = info.row.original;
       const completionStartTime = info.getValue();
@@ -285,7 +298,9 @@ export const createColumns = (sortProps?: LogsSortProps): ColumnDef<LogEntry>[] 
   },
   {
     header: "Team Name",
+    id: "team_name",
     accessorKey: "metadata.user_api_key_team_alias",
+    meta: { label: "Team Name" },
     size: 150,
     cell: (info: any) => (
       <Tooltip title={String(info.getValue() || "-")}>
@@ -295,13 +310,17 @@ export const createColumns = (sortProps?: LogsSortProps): ColumnDef<LogEntry>[] 
   },
   {
     header: "Key Hash",
+    id: "key_hash",
     accessorKey: "metadata.user_api_key",
+    meta: { label: "Key Hash" },
     size: 110,
     cell: (info: any) => <IdCell value={info.getValue()} variant="plain" onClick={info.row.original.onKeyHashClick} />,
   },
   {
     header: "Key Alias",
+    id: "key_alias",
     accessorKey: "metadata.user_api_key_alias",
+    meta: { label: "Key Alias" },
     size: 150,
     cell: (info: any) => (
       <Tooltip title={String(info.getValue() || "-")}>
@@ -321,7 +340,9 @@ export const createColumns = (sortProps?: LogsSortProps): ColumnDef<LogEntry>[] 
           />
         )
       : "Model",
+    id: "model",
     accessorKey: "model",
+    meta: { label: "Model" },
     size: 200,
     cell: (info: any) => {
       const row = info.row.original;
@@ -359,9 +380,10 @@ export const createColumns = (sortProps?: LogsSortProps): ColumnDef<LogEntry>[] 
           />
         )
       : "Tokens",
+    id: "total_tokens",
     accessorKey: "total_tokens",
     size: 140,
-    meta: { numeric: true },
+    meta: { numeric: true, label: "Tokens" },
     cell: (info: any) => {
       const row = info.row.original;
       return (
@@ -376,7 +398,9 @@ export const createColumns = (sortProps?: LogsSortProps): ColumnDef<LogEntry>[] 
   },
   {
     header: "Internal User",
+    id: "user",
     accessorKey: "user",
+    meta: { label: "Internal User" },
     size: 150,
     cell: (info: any) => (
       <Tooltip title={String(info.getValue() || "-")}>
@@ -386,7 +410,9 @@ export const createColumns = (sortProps?: LogsSortProps): ColumnDef<LogEntry>[] 
   },
   {
     header: "End User",
+    id: "end_user",
     accessorKey: "end_user",
+    meta: { label: "End User" },
     size: 140,
     cell: (info: any) => (
       <Tooltip title={String(info.getValue() || "-")}>
@@ -397,7 +423,9 @@ export const createColumns = (sortProps?: LogsSortProps): ColumnDef<LogEntry>[] 
 
   {
     header: "Tags",
+    id: "request_tags",
     accessorKey: "request_tags",
+    meta: { label: "Tags" },
     size: 150,
     cell: (info: any) => {
       const tags = info.getValue();
@@ -433,6 +461,7 @@ export const createColumns = (sortProps?: LogsSortProps): ColumnDef<LogEntry>[] 
   {
     id: "replay",
     header: "",
+    meta: { label: "Replay" },
     size: 40,
     cell: ({ row }) => <ReplayButton row={row.original} />,
   },

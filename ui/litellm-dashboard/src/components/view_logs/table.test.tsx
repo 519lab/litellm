@@ -256,3 +256,42 @@ describe("DataTable sorting", () => {
     expect(firstColumnValues()).toEqual(["charlie", "bravo", "alpha"]);
   });
 });
+
+describe("DataTable column visibility", () => {
+  it("hides columns whose visibility state is false and spans placeholder rows over the visible ones", () => {
+    const { rerender } = render(<DataTable data={data} columns={unsizedColumns} columnVisibility={{ b: false }} />);
+
+    expect(screen.getByRole("columnheader", { name: "A" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "B" })).not.toBeInTheDocument();
+    expect(screen.queryByText("beta")).not.toBeInTheDocument();
+
+    rerender(<DataTable data={[]} columns={unsizedColumns} columnVisibility={{ b: false }} />);
+    expect(screen.getByText("No results").closest("td")).toHaveAttribute("colspan", "1");
+  });
+});
+
+describe("DataTable error and empty states", () => {
+  it("renders the error message as an alert with a Retry button instead of rows", async () => {
+    const user = userEvent.setup();
+    const onRetry = vi.fn();
+    render(<DataTable data={data} columns={unsizedColumns} errorMessage="Could not load" onRetry={onRetry} />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Could not load");
+    expect(screen.queryByText("alpha")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the empty-state hint under the message", () => {
+    render(<DataTable data={[]} columns={unsizedColumns} noDataMessage="Nothing" noDataHint="Widen the range" />);
+
+    expect(screen.getByText("Nothing")).toBeInTheDocument();
+    expect(screen.getByText("Widen the range")).toBeInTheDocument();
+  });
+
+  it("renders skeleton rows while loading", () => {
+    render(<DataTable data={data} columns={unsizedColumns} isLoading />);
+
+    expect(document.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(0);
+  });
+});

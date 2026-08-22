@@ -2,6 +2,7 @@ import { Fragment, useState } from "react";
 import {
   ColumnDef,
   RowData,
+  VisibilityState,
   flexRender,
   getCoreRowModel,
   getExpandedRowModel,
@@ -10,14 +11,20 @@ import {
   getSortedRowModel,
   SortingState,
 } from "@tanstack/react-table";
+import { AlertCircle, Inbox } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableHeader, TableHead, TableBody, TableRow, TableCell } from "@/components/ui/table";
 
 declare module "@tanstack/react-table" {
   interface ColumnMeta<TData extends RowData, TValue> {
     numeric?: boolean;
+    label?: string;
   }
 }
+
+const SKELETON_ROW_COUNT = 6;
 
 interface DataTableProps<TData, TValue> {
   data: TData[];
@@ -30,6 +37,10 @@ interface DataTableProps<TData, TValue> {
   isLoading?: boolean;
   loadingMessage?: string;
   noDataMessage?: string;
+  noDataHint?: string;
+  errorMessage?: string | null;
+  onRetry?: () => void;
+  columnVisibility?: VisibilityState;
   /** Enable client-side column sorting (defaults to false to avoid conflicts with server-side sorting) */
   enableSorting?: boolean;
 }
@@ -44,6 +55,10 @@ export function DataTable<TData, TValue>({
   isLoading = false,
   loadingMessage = "Loading...",
   noDataMessage = "No results",
+  noDataHint,
+  errorMessage = null,
+  onRetry,
+  columnVisibility,
   enableSorting = false,
 }: DataTableProps<TData, TValue>) {
   const supportsExpansion = !!renderSubComponent && !!getRowCanExpand;
@@ -53,10 +68,11 @@ export function DataTable<TData, TValue>({
   const table = useReactTable<TData>({
     data,
     columns,
+    state: {
+      ...(enableSorting && { sorting }),
+      ...(columnVisibility && { columnVisibility }),
+    },
     ...(enableSorting && {
-      state: {
-        sorting,
-      },
       onSortingChange: setSorting,
       enableSortingRemoval: false,
     }),
@@ -67,8 +83,81 @@ export function DataTable<TData, TValue>({
     ...(supportsExpansion && { getExpandedRowModel: getExpandedRowModel() }),
   });
 
+  const visibleColumnCount = table.getVisibleLeafColumns().length;
   const tableClassName = hasExplicitColumnSizes ? "table-fixed" : "table-fixed w-full box-border";
   const tableStyle = hasExplicitColumnSizes ? { minWidth: table.getCenterTotalSize() } : { minWidth: "400px" };
+
+  const renderBody = () => {
+    if (errorMessage) {
+      return (
+        <TableRow className="hover:bg-transparent">
+          <TableCell colSpan={visibleColumnCount} className="h-24 text-center align-middle">
+            <div role="alert" className="flex flex-col items-center gap-2 text-sm text-destructive">
+              <span className="flex items-center gap-1.5">
+                <AlertCircle className="size-4" aria-hidden="true" />
+                {errorMessage}
+              </span>
+              {onRetry && (
+                <Button variant="outline" size="xs" onClick={onRetry}>
+                  Retry
+                </Button>
+              )}
+            </div>
+          </TableCell>
+        </TableRow>
+      );
+    }
+    if (isLoading) {
+      return Array.from({ length: SKELETON_ROW_COUNT }, (_, rowIndex) => (
+        <TableRow key={rowIndex} className="hover:bg-transparent" aria-busy="true">
+          {table.getVisibleLeafColumns().map((column, cellIndex) => (
+            <TableCell key={column.id} className="py-1.5 first:pl-4 last:pr-4">
+              {rowIndex === 0 && cellIndex === 0 && <span className="sr-only">{loadingMessage}</span>}
+              <Skeleton className="h-3.5 w-3/4" />
+            </TableCell>
+          ))}
+        </TableRow>
+      ));
+    }
+    if (table.getRowModel().rows.length === 0) {
+      return (
+        <TableRow className="hover:bg-transparent">
+          <TableCell colSpan={visibleColumnCount} className="h-32 text-center align-middle">
+            <div className="flex flex-col items-center gap-1">
+              <Inbox className="size-5 text-muted-foreground/60" aria-hidden="true" />
+              <p className="text-sm font-medium text-foreground">{noDataMessage}</p>
+              {noDataHint && <p className="text-xs text-muted-foreground">{noDataHint}</p>}
+            </div>
+          </TableCell>
+        </TableRow>
+      );
+    }
+    return table.getRowModel().rows.map((row) => (
+      <Fragment key={row.id}>
+        <TableRow className={`h-8 ${onRowClick ? "cursor-pointer" : ""}`} onClick={() => onRowClick?.(row.original)}>
+          {row.getVisibleCells().map((cell) => (
+            <TableCell
+              key={cell.id}
+              className={`py-0.5 max-h-8 overflow-hidden text-ellipsis whitespace-nowrap first:pl-4 last:pr-4 ${
+                cell.column.columnDef.meta?.numeric ? "text-right tabular-nums" : ""
+              }`}
+              style={hasExplicitColumnSizes ? { width: cell.column.getSize() } : undefined}
+            >
+              {flexRender(cell.column.columnDef.cell, cell.getContext())}
+            </TableCell>
+          ))}
+        </TableRow>
+
+        {supportsExpansion && row.getIsExpanded() && renderSubComponent && (
+          <TableRow className="hover:bg-transparent">
+            <TableCell colSpan={row.getVisibleCells().length} className="p-0">
+              <div className="w-full max-w-full overflow-hidden box-border">{renderSubComponent({ row })}</div>
+            </TableCell>
+          </TableRow>
+        )}
+      </Fragment>
+    ));
+  };
 
   return (
     <div className="rounded-lg custom-border overflow-hidden w-full max-w-full box-border">
@@ -106,52 +195,7 @@ export function DataTable<TData, TValue>({
             </TableRow>
           ))}
         </TableHeader>
-        <TableBody>
-          {isLoading ? (
-            <TableRow className="hover:bg-transparent">
-              <TableCell colSpan={columns.length} className="h-8 text-center">
-                <div className="text-center text-muted-foreground">
-                  <p>{loadingMessage}</p>
-                </div>
-              </TableCell>
-            </TableRow>
-          ) : table.getRowModel().rows.length > 0 ? (
-            table.getRowModel().rows.map((row) => (
-              <Fragment key={row.id}>
-                <TableRow
-                  className={`h-8 ${onRowClick ? "cursor-pointer" : ""}`}
-                  onClick={() => onRowClick?.(row.original)}
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell
-                      key={cell.id}
-                      className={`py-0.5 max-h-8 overflow-hidden text-ellipsis whitespace-nowrap first:pl-4 last:pr-4 ${
-                        cell.column.columnDef.meta?.numeric ? "text-right tabular-nums" : ""
-                      }`}
-                      style={hasExplicitColumnSizes ? { width: cell.column.getSize() } : undefined}
-                    >
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
-                  ))}
-                </TableRow>
-
-                {supportsExpansion && row.getIsExpanded() && renderSubComponent && (
-                  <TableRow className="hover:bg-transparent">
-                    <TableCell colSpan={row.getVisibleCells().length} className="p-0">
-                      <div className="w-full max-w-full overflow-hidden box-border">{renderSubComponent({ row })}</div>
-                    </TableCell>
-                  </TableRow>
-                )}
-              </Fragment>
-            ))
-          ) : (
-            <TableRow className="hover:bg-transparent">
-              <TableCell colSpan={columns.length} className="h-24 text-center align-middle">
-                <p className="text-sm text-muted-foreground">{noDataMessage}</p>
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
+        <TableBody>{renderBody()}</TableBody>
       </Table>
     </div>
   );

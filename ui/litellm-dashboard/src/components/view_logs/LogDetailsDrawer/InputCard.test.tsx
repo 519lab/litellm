@@ -101,6 +101,12 @@ describe("InputCard", () => {
     expect(screen.getByText(/Cost: \$0\.001500/)).toBeInTheDocument();
   });
 
+  it("hides the cost label when the input cost is zero", () => {
+    render(<InputCard messages={mockMessages} promptTokens={12} inputCost={0} />);
+    expect(screen.getByText(/Tokens: 12/)).toBeInTheDocument();
+    expect(screen.queryByText(/Cost:/)).not.toBeInTheDocument();
+  });
+
   it("should copy last message content when copy button is clicked", async () => {
     const messages: ParsedMessage[] = [
       {
