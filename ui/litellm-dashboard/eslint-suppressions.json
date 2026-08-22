@@ -1287,12 +1287,6 @@
     }
   },
   "src/app/(dashboard)/workflows/WorkflowRuns.tsx": {
-    "no-nested-ternary": {
-      "count": 1
-    },
-    "no-restricted-syntax": {
-      "count": 3
-    },
     "react-hooks/set-state-in-effect": {
       "count": 1
     }
@@ -2233,21 +2227,11 @@
       "count": 4
     }
   },
-  "src/components/view_logs/LogDetailsDrawer/LogDetailContent.tsx": {
-    "no-nested-ternary": {
-      "count": 2
-    }
-  },
   "src/components/view_logs/LogDetailsDrawer/LogDetailsDrawer.tsx": {
     "no-nested-ternary": {
-      "count": 3
+      "count": 2
     },
     "react-hooks/set-state-in-effect": {
-      "count": 2
-    }
-  },
-  "src/components/view_logs/LogDetailsDrawer/RealtimePrettyView.test.tsx": {
-    "unused-imports/no-unused-imports": {
       "count": 2
     }
   },
