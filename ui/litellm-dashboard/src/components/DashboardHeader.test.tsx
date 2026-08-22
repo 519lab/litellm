@@ -16,10 +16,15 @@ const { mockUsePluginMode, mockUseUISettings, state } = vi.hoisted(() => {
 
 vi.mock("@/contexts/PluginModeContext", () => ({ usePluginMode: mockUsePluginMode }));
 vi.mock("@/app/(dashboard)/hooks/uiSettings/useUISettings", () => ({ useUISettings: mockUseUISettings }));
-vi.mock("next/navigation", () => ({ usePathname: () => "/ui/" }));
+vi.mock("next/navigation", () => ({ usePathname: () => "/ui/", useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/utils/migratedPages", () => ({ migratedHref: (seg: string) => `/ui/${seg}` }));
 vi.mock("@/hooks/useWorker", () => ({ useWorker: () => ({ isControlPlane: false, selectedWorker: null }) }));
 vi.mock("@/components/Navbar/NotificationsBell/NotificationsBell", () => ({ NotificationsBell: () => null }));
+vi.mock("@/app/(dashboard)/hooks/useAuthorized", () => ({ default: () => ({ userRole: "Admin" }) }));
+vi.mock("@/components/leftnav", () => ({
+  getBreadcrumb: (page: string) => ({ section: "Gateway", title: page === "logs" ? "Logs" : page }),
+  navEntriesForRole: () => [{ key: "logs", label: "Logs", section: "Gateway", href: "/ui/logs" }],
+}));
 vi.mock("@/components/Navbar/WorkerDropdown/WorkerDropdown", () => ({ default: () => null }));
 
 describe("DashboardHeader breadcrumb", () => {
@@ -56,5 +61,20 @@ describe("DashboardHeader breadcrumb", () => {
     expect(screen.getByRole("button", { name: /AI Gateway/i })).toBeInTheDocument();
     expect(screen.getByText("Logs")).toBeInTheDocument();
     expect(screen.queryByText("Observability")).not.toBeInTheDocument();
+  });
+
+  it("opens the command palette from the Search button and with Ctrl+K", async () => {
+    render(<DashboardHeader page="logs" />);
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: /search pages/i }));
+    });
+    await waitFor(() => expect(screen.getByRole("combobox")).toBeInTheDocument());
+
+    act(() => {
+      fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    });
+    await waitFor(() => expect(screen.queryByRole("combobox")).not.toBeInTheDocument());
   });
 });

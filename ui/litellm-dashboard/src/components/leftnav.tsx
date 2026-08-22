@@ -78,6 +78,7 @@ import type { Organization } from "./networking";
 import SidebarAccountMenu from "./SidebarAccountMenu/SidebarAccountMenu";
 import SidebarUsageCard from "./SidebarUsageCard";
 import { MIGRATED_PAGES, migratedHref, legacyPageHref } from "@/utils/migratedPages";
+import type { PaletteEntry } from "@/components/CommandPalette/CommandPalette";
 
 const ICON = { strokeWidth: 1.75 } as const;
 
@@ -360,6 +361,27 @@ const findGroupLabel = (page: string): string | null => {
   return null;
 };
 
+const itemHref = (item: MenuItem): string =>
+  item.external_url ??
+  (MIGRATED_PAGES[item.page] ? migratedHref(MIGRATED_PAGES[item.page]) : legacyPageHref(item.page));
+
+export const navEntriesForRole = (userRole: string): readonly PaletteEntry[] =>
+  menuGroups
+    .filter((group) => !group.roles || group.roles.includes(userRole))
+    .flatMap((group) =>
+      group.items
+        .flatMap((item) => (item.children && item.children.length > 0 ? item.children : [item]))
+        .filter((item) => !item.roles || item.roles.includes(userRole))
+        .map((item) => ({
+          key: item.key,
+          label: labelText(item),
+          section: SECTION_DISPLAY[group.groupLabel] ?? group.groupLabel,
+          href: itemHref(item),
+          icon: item.icon,
+          external: item.external_url !== undefined,
+        })),
+    );
+
 const SECTION_DISPLAY: Record<string, string> = {
   GATEWAY: "Gateway",
   MORE: "More",
@@ -521,11 +543,10 @@ const Sidebar_: React.FC<SidebarProps> = ({
       );
     }
 
-    const href = MIGRATED_PAGES[item.page] ? migratedHref(MIGRATED_PAGES[item.page]) : legacyPageHref(item.page);
     return (
       <a
         key={item.key}
-        href={href}
+        href={itemHref(item)}
         onClick={(e) => handleLeafClick(e, item)}
         title={collapsed ? labelText(item) : undefined}
         data-active={active || undefined}
@@ -589,7 +610,6 @@ const Sidebar_: React.FC<SidebarProps> = ({
             {version && (
               <Badge
                 variant="outline"
-                render={<a href="https://docs.litellm.ai/release_notes" target="_blank" rel="noopener noreferrer" />}
                 className="px-1.5 py-0 font-mono text-[10px] font-medium text-muted-foreground group-data-[collapsed=true]/sidebar:hidden"
               >
                 v{version}

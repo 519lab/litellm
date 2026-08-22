@@ -12,7 +12,8 @@ import { createColumns, LogEntry, type LogsSortField } from "./columns";
 import { useLogColumnVisibility } from "./columnVisibility";
 import { AGENT_CALL_TYPES, MCP_CALL_TYPES } from "./constants";
 import { getLogFilterOptions } from "./filter_options";
-import { useLogFilterLogic, defaultFilters, type LogFilterState } from "./log_filter_logic";
+import { useLogFilterLogic, defaultFilters, FILTER_KEYS, type LogFilterState } from "./log_filter_logic";
+import { useSearchParams } from "next/navigation";
 import { LogDetailsDrawer } from "./LogDetailsDrawer";
 import { LogFiltersPanel } from "./LogFiltersPanel";
 import { LogsToolbar, type ColumnToggle } from "./LogsToolbar";
@@ -47,7 +48,11 @@ export default function SpendLogsTable({ accessToken, token, userRole, userID, p
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [timeRange, setTimeRange] = useState<TimeRange>(defaultTimeRange);
-  const [filters, setFilters] = useState<LogFilterState>(defaultFilters);
+  const searchParams = useSearchParams();
+  const [filters, setFilters] = useState<LogFilterState>(() => {
+    const requestId = searchParams?.get("request_id");
+    return requestId ? { ...defaultFilters, [FILTER_KEYS.REQUEST_ID]: requestId } : defaultFilters;
+  });
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedKeyInfo, setSelectedKeyInfo] = useState<KeyResponse | null>(null);
   const [selectedKeyIdInfoView, setSelectedKeyIdInfoView] = useState<string | null>(null);
