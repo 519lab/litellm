@@ -94,6 +94,21 @@ class TestResponsesAPIRequestUtils:
         assert result["max_output_tokens"] == 100
         assert result["prompt"] == {"id": "pmpt_456"}
 
+    def test_get_requested_response_api_optional_param_honors_deployment_additional_drop_params(self):
+        """Regression: a deployment's litellm_params additional_drop_params arrive inside kwargs and must still drop."""
+        params = {
+            "temperature": 0.7,
+            "previous_response_id": "resp_123",
+            "custom_llm_provider": "openai",
+            "kwargs": {"additional_drop_params": ["previous_response_id"]},
+        }
+
+        result = ResponsesAPIRequestUtils.get_requested_response_api_optional_param(params)
+
+        assert "previous_response_id" not in result
+        assert "additional_drop_params" not in result
+        assert result["temperature"] == 0.7
+
     def test_decode_previous_response_id_to_original_previous_response_id(self):
         """Test decoding a LiteLLM encoded previous_response_id to the original previous_response_id"""
         # Setup

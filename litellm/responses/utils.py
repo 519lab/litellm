@@ -128,7 +128,9 @@ class ResponsesAPIRequestUtils:
         custom_llm_provider = params.pop("custom_llm_provider", None)
         special_params = params.pop("kwargs", {})
 
-        additional_drop_params = params.pop("additional_drop_params", None)
+        additional_drop_params = params.pop("additional_drop_params", None) or special_params.pop(
+            "additional_drop_params", None
+        )
         non_default_params = PreProcessNonDefaultParams.base_pre_process_non_default_params(
             passed_params=params,
             special_params=special_params,
