@@ -28,6 +28,11 @@ COLD_STORAGE_HANDLER = ColdStorageHandler()
 ########################################################
 
 
+def cache_hit_request_id_pattern(request_id: str) -> str:
+    escaped = request_id.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"{escaped}\\_cache\\_hit%"
+
+
 class ResponsesSessionHandler:
     @staticmethod
     async def get_chat_completion_message_history_for_previous_response_id(
@@ -272,7 +277,7 @@ class ResponsesSessionHandler:
             WITH matching_session AS (
                 SELECT session_id
                 FROM "LiteLLM_SpendLogs"
-                WHERE request_id = $1
+                WHERE request_id = $1 OR request_id LIKE $2
             )
             SELECT *
             FROM "LiteLLM_SpendLogs"
@@ -280,7 +285,9 @@ class ResponsesSessionHandler:
             ORDER BY "endTime" ASC;
         """
 
-        spend_logs = await prisma_client.db.query_raw(query, previous_response_id)
+        spend_logs = await prisma_client.db.query_raw(
+            query, previous_response_id, cache_hit_request_id_pattern(previous_response_id)
+        )
 
         verbose_proxy_logger.debug(
             "Found the following spend logs for previous response id %s: %s",

@@ -1,7 +1,7 @@
 import json
 import os
 import sys
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -435,3 +435,27 @@ async def test_get_chat_completion_message_history_empty_response_dict():
 
         # Verify the session was still created correctly
         assert result["litellm_session_id"] == "test-session"
+
+
+def test_cache_hit_request_id_pattern_escapes_like_metacharacters():
+    from litellm.responses.litellm_completion_transformation.session_handler import cache_hit_request_id_pattern
+
+    assert cache_hit_request_id_pattern("resp_a%b_c") == "resp\\_a\\%b\\_c\\_cache\\_hit%"
+
+
+@pytest.mark.asyncio
+async def test_get_all_spend_logs_matches_cache_hit_suffixed_request_ids():
+    """Regression: a response served from cache is stored as <id>_cache_hit<ts>; chaining from it must still resolve."""
+    import litellm.proxy.proxy_server as proxy_server
+
+    query_raw = AsyncMock(return_value=[{"request_id": "resp_123_cache_hit1.0", "session_id": "s1"}])
+    prisma = MagicMock()
+    prisma.db.query_raw = query_raw
+    with patch.object(proxy_server, "prisma_client", prisma):
+        rows = await ResponsesSessionHandler.get_all_spend_logs_for_previous_response_id("resp_123")
+
+    assert rows[0]["session_id"] == "s1"
+    sql, exact_id, pattern = query_raw.call_args.args
+    assert "request_id = $1 OR request_id LIKE $2" in sql
+    assert exact_id == "resp_123"
+    assert pattern == "resp\\_123\\_cache\\_hit%"
