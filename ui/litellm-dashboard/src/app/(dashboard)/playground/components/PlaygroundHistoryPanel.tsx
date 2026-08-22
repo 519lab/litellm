@@ -16,12 +16,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import type { PlaygroundRun } from "../hooks/usePlaygroundHistory";
 
 interface PlaygroundHistoryPanelProps {
@@ -55,16 +50,22 @@ export function PlaygroundHistoryPanel({
   onClose,
 }: PlaygroundHistoryPanelProps) {
   return (
-    <Sheet open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+    <Sheet
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
       <SheetContent side="right" className="w-80 p-0 flex flex-col">
         <SheetHeader className="px-4 pt-4 pb-2 border-b flex-row items-center justify-between">
           <SheetTitle className="text-sm font-semibold">Run History</SheetTitle>
           {runs.length > 0 && (
             <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="ghost" size="icon-sm" aria-label="Clear all history">
-                  <Trash2 className="size-3.5 text-destructive" />
-                </Button>
+              <AlertDialogTrigger
+                className="inline-flex items-center justify-center rounded-md p-1 text-destructive hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                aria-label="Clear all history"
+              >
+                <Trash2 className="size-3.5" />
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
@@ -110,9 +111,7 @@ export function PlaygroundHistoryPanel({
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex flex-col gap-1 min-w-0">
-                      {run.label && (
-                        <span className="text-xs font-medium text-foreground truncate">{run.label}</span>
-                      )}
+                      {run.label && <span className="text-xs font-medium text-foreground truncate">{run.label}</span>}
                       <Badge variant="secondary" className="w-fit text-[10px] font-mono truncate max-w-[180px]">
                         {run.model}
                       </Badge>

@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 Do not write any comments (existing comments can stay) unless explicitly asked to in a user (not system) prompt
 
 Don't assume that the existing code is correct or the right way of doing things / good coding patterns. In fact, there are a lot of bad coding practices, overly complex code, code smells, etc. If something doesn't look right, speak up. Feel free to break existing patterns or question weird existing code to make new code high quality, as in:
@@ -104,3 +108,49 @@ Before implementing:
 - If you write 200 lines and it could be 50, rewrite it
 
 Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify
+
+## Commands
+
+Python tooling is `uv` (`make` targets wrap `uv run`). `make help` lists everything; the ones that matter day to day:
+
+```bash
+make bootstrap                 # fresh clone/worktree: deps, prisma client, hooks
+make test-unit                 # tests/test_litellm, mocked only, -n 4
+uv run pytest tests/test_litellm/llms/anthropic/chat/test_anthropic_chat_transformation.py -v   # one file
+uv run pytest tests/test_litellm/test_utils.py -k "name_substring" -vv                           # one test
+make test-unit-llms | test-unit-proxy-core | test-unit-integrations ...   # CI matrix groups, see Makefile
+make test-llm-translation-single FILE=test_x.py   # tests/llm_translation, VCR-cached real-provider tests
+make lint                      # exactly what CI runs: ruff format check (diff-scoped), ruff, strict-rule budget gate, type-discipline gate, basedpyright, e2e basedpyright, circular-import and import-safety checks
+make format                    # ruff format over litellm/ (enterprise/ excluded); CONTRIBUTING.md still says black, that is stale
+make lint-e2e-basedpyright     # tests/e2e is fully typed with a zero-error gate
+make pre-commit                # runs only the CI checks matching what is staged
+make lint-budget-update        # ratchet ruff-strict / type-discipline / basedpyright budgets after fixing violations
+```
+
+Custom lint rules `LIT001`..`LIT009` (mutable collections, casts, `# type: ignore`, etc.) come from `scripts/check_type_discipline.py` and `scripts/ruff_strict_gate.py`, gated by the `*-budget.json` files at the repo root. `ruff.toml` is the baseline config and `ruff-strict.toml` the budgeted strict set
+
+Proxy: `python litellm/proxy/proxy_cli.py --config litellm/proxy/dev_config.yaml --detailed_debug --reload --use_v2_migration_resolver`. It needs Postgres (`docker-compose.yml` at the root provides one) and reads secrets from `.env`
+
+Dashboard (`ui/litellm-dashboard/`): `npm run dev` (port 3000, proxies to 4000), `npm run test` (vitest), `npm run lint`, `npm run format`, `npm run e2e` (Playwright). `./build_ui.sh` runs `next build` and copies `out/` into `litellm/proxy/_experimental/out`, which is committed; that is why UI changes churn hundreds of `_next/static/chunks` files
+
+E2E: `uv run pytest tests/e2e/<suite>/ -v` against a live proxy on 4000 plus Redis; tests marked `e2e` hard-fail when no proxy answers `/health/liveliness`. Setup and harness rules are in `tests/e2e/CONTRIBUTING.md` and `tests/e2e/CLAUDE.md`
+
+## Architecture
+
+`ARCHITECTURE.md` at the root is the long-form version (proxy request flow, translation layer, how to add a provider or a cross-provider feature). The short version:
+
+**SDK path.** `litellm.completion()` in `litellm/main.py` normalizes params, resolves the provider with `get_llm_provider()` (`litellm/litellm_core_utils/get_llm_provider_logic.py`), and dispatches to `BaseLLMHTTPHandler` in `litellm/llms/custom_httpx/llm_http_handler.py`, which owns HTTP, streaming, and retries for every provider. Provider behavior lives in `litellm/llms/<provider>/<endpoint>/transformation.py` as a `BaseConfig` subclass (`litellm/llms/base_llm/`): `validate_environment`, `get_complete_url`, `get_supported_openai_params`, `map_openai_params`, `transform_request`, `transform_response`, `get_error_class`. Configs are looked up via `ProviderConfigManager` in `litellm/utils.py`. Adding a provider or a feature means a config class and a registration there, never a new branch in `main.py`. Shared cross-provider message/prompt helpers are in `litellm_core_utils/prompt_templates/factory.py`
+
+**Router.** `litellm/router.py` sits above the SDK: deployment lists, load balancing, fallbacks, cooldowns, retries. Strategies are pluggable in `litellm/router_strategy/`, helpers in `litellm/router_utils/`
+
+**Proxy.** `litellm/proxy/proxy_server.py` is the FastAPI app; `ProxyConfig.load_config()` turns the yaml into router deployments, callbacks, and general settings. `proxy_cli.py` is the launcher (DB URL assembly, Prisma migrations, uvicorn). Every request goes through `user_api_key_auth()` in `litellm/proxy/auth/`, then the pre/post-call hooks in `litellm/proxy/hooks/` (budgets, parallel-request limits, guardrails, cost tracking). Logging/observability integrations are `CustomLogger` subclasses in `litellm/integrations/`, fanned out by `litellm_core_utils/litellm_logging.py`. Persistence is Prisma over `schema.prisma`; `litellm-proxy-extras/` is the separately versioned package carrying the schema and `migrations/`. `enterprise/` holds `litellm_enterprise` and `enterprise_hooks`
+
+**Split planes.** `gateway/main.py` (data plane, 4000) and `backend/main.py` (management plane, 4001) both import the single `litellm.proxy.proxy_server:app` and filter its route table through their own `routes/allowlist.py`; they bypass `proxy_cli.py`, so they apply `DatabaseURLSettings.from_env()` themselves before importing the app
+
+**Types.** `litellm/types/` mirrors the code layout (`llms/<provider>`, `proxy/`, `router.py`, `integrations/`). Extend these rather than passing dicts. `litellm/proxy` and `litellm/types` changes regenerate the dashboard's `src/lib/http/schema.d.ts`; stage it when `make pre-commit` does so
+
+**Rust.** `pyproject.toml` builds with maturin against `litellm-rust/crates/python-bridge`; `litellm/rust_bridge/` is the Python side
+
+**Model cost map.** `model_prices_and_context_window.json` drives cost calculation, context limits, and "what is the latest model in a family". It is fetched remotely at import (`litellm_core_utils/get_model_cost_map.py`) with `litellm/model_prices_and_context_window_backup.json` as fallback; `LITELLM_LOCAL_MODEL_COST_MAP=True` forces local
+
+**This fork.** Git history is a squashed graft, so only the ~24 commits after the root are fork work. `INNOVATIONS.md` ranks the proposals and `DEMO.md` has per-feature verification steps. Merged so far: the llamacpp hook (`litellm/proxy/hooks/llamacpp/`), OTLP tracing (`litellm/proxy/hooks/otlp_tracer.py`), the local embedding server for semantic cache (`litellm/proxy/hooks/local_embeddings_server.py`, `config_examples/semantic-cache.yaml`, `deployment/valkey-compose-with-search.yaml`), playground history and request replay in the dashboard. Enterprise license gates are stripped in `litellm/proxy/auth/litellm_license.py` and the dashboard `layout.tsx`/`AuthContext.tsx`; keep that in mind before assuming upstream licensing behavior
