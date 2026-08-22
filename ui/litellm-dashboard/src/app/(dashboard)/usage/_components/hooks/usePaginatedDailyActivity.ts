@@ -47,6 +47,7 @@ interface UsePaginatedDailyActivityReturn {
   isFetchingMore: boolean;
   progress: PaginationProgress;
   cancelled: boolean;
+  error: string | null;
   cancel: () => void;
 }
 
@@ -99,6 +100,7 @@ export function usePaginatedDailyActivity({
     totalPages: 0,
   });
   const [cancelled, setCancelled] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchIdRef = useRef(0);
   const cancelledRef = useRef(false);
@@ -129,12 +131,14 @@ export function usePaginatedDailyActivity({
       setIsFetchingMore(false);
       setProgress({ currentPage: 0, totalPages: 0 });
       setCancelled(false);
+      setError(null);
       return;
     }
 
     const currentFetchId = ++fetchIdRef.current;
     cancelledRef.current = false;
     setCancelled(false);
+    setError(null);
 
     const isStale = () => fetchIdRef.current !== currentFetchId || cancelledRef.current;
 
@@ -216,6 +220,7 @@ export function usePaginatedDailyActivity({
       } catch (error) {
         if (!isStale()) {
           console.error("Error fetching daily activity:", error);
+          setError(error instanceof Error ? error.message : "Failed to load usage data");
           setLoading(false);
           setIsFetchingMore(false);
         }
@@ -235,5 +240,5 @@ export function usePaginatedDailyActivity({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, fetchFn, argsKey]);
 
-  return { data, loading, isFetchingMore, progress, cancelled, cancel };
+  return { data, loading, isFetchingMore, progress, cancelled, error, cancel };
 }

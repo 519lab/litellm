@@ -3,7 +3,8 @@ import { useCustomers } from "@/app/(dashboard)/hooks/customers/useCustomers";
 import useAuthorized from "@/app/(dashboard)/hooks/useAuthorized";
 import { useCurrentUser } from "@/app/(dashboard)/hooks/users/useCurrentUser";
 import { useInfiniteUsers } from "@/app/(dashboard)/hooks/users/useUsers";
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/../tests/test-utils";
 import type { Organization } from "@/components/networking";
@@ -32,10 +33,6 @@ vi.mock("@/components/networking", () => ({
 vi.mock("@/components/activity_metrics", () => ({
   ActivityMetrics: () => <div>Activity Metrics</div>,
   processActivityData: () => ({ data: [], metadata: {} }),
-}));
-
-vi.mock("@/components/view_user_spend", () => ({
-  default: () => <div>View User Spend</div>,
 }));
 
 vi.mock("@/components/UsagePage/components/EntityUsage/TopKeyView", () => ({
@@ -574,6 +571,52 @@ describe("UsagePage", () => {
     expect(successfulRequestElements.length).toBeGreaterThan(0);
   });
 
+  it("shows cost stats in the strip when total spend is above zero", async () => {
+    renderWithProviders(<UsagePage {...defaultProps} />);
+
+    const summary = await screen.findByLabelText("Usage summary");
+    expect(within(summary).getByText("Total Spend")).toBeInTheDocument();
+    expect(within(summary).getByText("$125.7500")).toBeInTheDocument();
+    expect(within(summary).getByText("Avg Cost / Request")).toBeInTheDocument();
+    expect(within(summary).getByText("Max Budget")).toBeInTheDocument();
+    expect(within(summary).getByText("No limit")).toBeInTheDocument();
+    expect(screen.queryByText("Usage Metrics")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Project Spend/)).not.toBeInTheDocument();
+  });
+
+  it("hides cost stats in the strip on a zero-spend deployment", async () => {
+    mockUserDailyActivityAggregatedCall.mockResolvedValue({
+      ...mockSpendData,
+      metadata: { ...mockSpendData.metadata, total_spend: 0 },
+    });
+
+    renderWithProviders(<UsagePage {...defaultProps} />);
+
+    const summary = await screen.findByLabelText("Usage summary");
+    expect(within(summary).queryByText("Total Spend")).not.toBeInTheDocument();
+    expect(within(summary).queryByText("Avg Cost / Request")).not.toBeInTheDocument();
+    expect(within(summary).queryByText("Max Budget")).not.toBeInTheDocument();
+    expect(within(summary).getByText("Total Requests")).toBeInTheDocument();
+    expect(within(summary).getByText("Total Tokens")).toBeInTheDocument();
+    expect(within(summary).getByText("75,000")).toBeInTheDocument();
+  });
+
+  it("renders the view select, user filter and date picker in one toolbar row without captions", async () => {
+    renderWithProviders(<UsagePage {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(mockUserDailyActivityAggregatedCall).toHaveBeenCalled();
+    });
+
+    const toolbar = screen.getByRole("toolbar", { name: "Usage filters" });
+    expect(within(toolbar).getByTestId("usage-view-select")).toBeInTheDocument();
+    expect(within(toolbar).getByRole("combobox", { name: "Filter by user" })).toBeInTheDocument();
+    expect(within(toolbar).getByTestId("advanced-date-picker")).toBeInTheDocument();
+    expect(screen.queryByText("Select the usage data you want to view")).not.toBeInTheDocument();
+    expect(screen.queryByText("Usage View")).not.toBeInTheDocument();
+    expect(screen.queryByText("Select Time Range")).not.toBeInTheDocument();
+  });
+
   it("should display usage metrics and charts", async () => {
     renderWithProviders(<UsagePage {...defaultProps} />);
 
@@ -747,10 +790,7 @@ describe("UsagePage", () => {
         expect(mockUserDailyActivityAggregatedCall).toHaveBeenCalled();
       });
 
-      // Admin should see the user selector select element with the placeholder attribute
-      const userSelects = screen.getAllByRole("combobox");
-      const userSelect = userSelects.find((el) => el.getAttribute("placeholder") === "Select user to filter...");
-      expect(userSelect).toBeDefined();
+      expect(screen.getByRole("combobox", { name: "Filter by user" })).toBeInTheDocument();
     });
 
     it("should format user options with alias when available", async () => {
@@ -760,8 +800,10 @@ describe("UsagePage", () => {
         expect(mockUserDailyActivityAggregatedCall).toHaveBeenCalled();
       });
 
+      await userEvent.setup().click(screen.getByRole("combobox", { name: "Filter by user" }));
+
       // User with alias should show "alias (id)"
-      expect(screen.getByText("Alice (user-001)")).toBeInTheDocument();
+      expect(await screen.findByText("Alice (user-001)")).toBeInTheDocument();
       // User without alias but with email should show "email (id)"
       expect(screen.getByText("bob@example.com (user-002)")).toBeInTheDocument();
       // User with neither alias nor email should show just the id
@@ -813,8 +855,10 @@ describe("UsagePage", () => {
         expect(mockUserDailyActivityAggregatedCall).toHaveBeenCalled();
       });
 
+      await userEvent.setup().click(screen.getByRole("combobox", { name: "Filter by user" }));
+
       // Duplicate user should appear only once
-      const dupElements = screen.getAllByText("DupUser (user-dup)");
+      const dupElements = await screen.findAllByText("DupUser (user-dup)");
       expect(dupElements).toHaveLength(1);
       // Unique user should also appear
       expect(screen.getByText("UniqueUser (user-unique)")).toBeInTheDocument();
@@ -859,9 +903,7 @@ describe("UsagePage", () => {
       });
 
       // Non-admin should not see the user selector
-      const userSelects = screen.getAllByRole("combobox");
-      const userSelect = userSelects.find((el) => el.getAttribute("placeholder") === "Select user to filter...");
-      expect(userSelect).toBeUndefined();
+      expect(screen.queryByRole("combobox", { name: "Filter by user" })).not.toBeInTheDocument();
     });
 
     it("should always pass own userId for non-admin users", async () => {
