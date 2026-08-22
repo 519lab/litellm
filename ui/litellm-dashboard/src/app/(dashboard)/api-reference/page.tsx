@@ -1,7 +1,6 @@
 "use client";
 
 import APIReferenceView from "./_components/APIReferenceView";
-import { DeprecationBanner } from "@/components/DeprecationBanner";
 import useAuthorized from "@/app/(dashboard)/hooks/useAuthorized";
 import useProxySettings from "@/app/(dashboard)/hooks/proxySettings/useProxySettings";
 
@@ -11,7 +10,6 @@ const APIReferencePage = () => {
 
   return (
     <>
-      <DeprecationBanner featureName="The API Reference tab" />
       <APIReferenceView proxySettings={proxySettings} />
     </>
   );

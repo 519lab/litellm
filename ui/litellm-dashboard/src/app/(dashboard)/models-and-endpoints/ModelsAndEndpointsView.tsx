@@ -4,7 +4,6 @@ import { useModelsInfo } from "@/app/(dashboard)/hooks/models/useModels";
 import { useUISettings } from "@/app/(dashboard)/hooks/uiSettings/useUISettings";
 import { useUpdateRetryPolicy } from "@/app/(dashboard)/hooks/routerSettings/useUpdateRetryPolicy";
 import AllModelsTab from "@/app/(dashboard)/models-and-endpoints/components/AllModelsTab";
-import CostOptimizationFeedbackBanner from "@/components/molecules/cost_optimization_feedback_banner";
 import ModelRetrySettingsTab from "@/app/(dashboard)/models-and-endpoints/components/ModelRetrySettingsTab";
 import PriceDataManagementTab from "@/app/(dashboard)/models-and-endpoints/components/PriceDataManagementTab";
 import { handleAddModelSubmit } from "@/components/add_model/handle_add_model_submit";
@@ -311,8 +310,6 @@ const ModelsAndEndpointsView: React.FC<ModelDashboardProps> = ({ premiumUser, te
             </div>
           </div>
 
-          {/* Cost Optimization Feedback Banner */}
-          <CostOptimizationFeedbackBanner />
           {selectedModelId && !isLoading ? (
             <ModelInfoView
               modelId={selectedModelId}

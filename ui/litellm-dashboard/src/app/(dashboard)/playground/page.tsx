@@ -7,7 +7,6 @@ import ChatUI from "@/app/(dashboard)/playground/components/chat_ui/ChatUI";
 import CompareUI from "@/app/(dashboard)/playground/components/compareUI/CompareUI";
 import ComplianceUI from "@/app/(dashboard)/playground/components/complianceUI/ComplianceUI";
 import { TabGroup, TabList, Tab, TabPanels, TabPanel } from "@tremor/react";
-import { DeprecationBanner } from "@/components/DeprecationBanner";
 import { ReplayBanner } from "@/components/view_logs/ReplayBanner";
 import useAuthorized from "@/app/(dashboard)/hooks/useAuthorized";
 import { fetchProxySettings } from "@/utils/proxyUtils";
@@ -54,9 +53,9 @@ export default function PlaygroundPage() {
   const { runs, addRun, deleteRun, clearHistory } = usePlaygroundHistory();
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      setReplay(readAndClearReplay());
-    }
+    if (typeof window === "undefined") return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sessionStorage is only readable after hydration; a lazy initializer would mismatch the prerendered HTML
+    setReplay(readAndClearReplay());
   }, []);
 
   useEffect(() => {
@@ -82,35 +81,17 @@ export default function PlaygroundPage() {
 
   return (
     <div className="h-full w-full flex flex-col">
-      {replay && (
-        <ReplayBanner
-          model={replay.model}
-          requestId={replay.request_id}
-          onDismiss={() => setReplay(null)}
-        />
-      )}
+      {replay && <ReplayBanner model={replay.model} requestId={replay.request_id} onDismiss={() => setReplay(null)} />}
       <div className="flex items-center justify-end gap-2 px-4 py-2 border-b border-border shrink-0">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setSaveOpen(true)}
-          className="gap-1.5"
-        >
+        <Button variant="outline" size="sm" onClick={() => setSaveOpen(true)} className="gap-1.5">
           <Save className="size-3.5" />
           Save run
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setHistoryOpen(true)}
-          className="gap-1.5"
-        >
+        <Button variant="outline" size="sm" onClick={() => setHistoryOpen(true)} className="gap-1.5">
           <History className="size-3.5" />
           History
           {runs.length > 0 && (
-            <span className="ml-0.5 text-[10px] font-mono text-muted-foreground">
-              ({runs.length})
-            </span>
+            <span className="ml-0.5 text-[10px] font-mono text-muted-foreground">({runs.length})</span>
           )}
         </Button>
       </div>
@@ -142,7 +123,6 @@ export default function PlaygroundPage() {
             <ComplianceUI accessToken={accessToken} disabledPersonalKeyCreation={disabledPersonalKeyCreation} />
           </TabPanel>
           <TabPanel className="h-full">
-            <DeprecationBanner featureName="The Playground's Agent Builder" />
             <AgentBuilderView
               accessToken={accessToken}
               token={token}
@@ -165,16 +145,9 @@ export default function PlaygroundPage() {
         onClose={() => setHistoryOpen(false)}
       />
 
-      <SaveRunDialog
-        open={saveOpen}
-        onClose={() => setSaveOpen(false)}
-        onSave={addRun}
-      />
+      <SaveRunDialog open={saveOpen} onClose={() => setSaveOpen(false)} onSave={addRun} />
 
-      <RunDetailDialog
-        run={detailRun}
-        onClose={() => setDetailRun(undefined)}
-      />
+      <RunDetailDialog run={detailRun} onClose={() => setDetailRun(undefined)} />
     </div>
   );
 }

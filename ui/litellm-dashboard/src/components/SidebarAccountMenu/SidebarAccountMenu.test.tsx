@@ -144,15 +144,14 @@ describe("SidebarAccountMenu", () => {
     expect(screen.getByText("Premium")).toBeInTheDocument();
   });
 
-  it("should render a clickable version badge linking to the release notes", async () => {
+  it("should render the version badge as plain text without an upstream link", async () => {
     const user = userEvent.setup();
     renderWithProviders(<SidebarAccountMenu onLogout={mockOnLogout} />);
 
     await openMenu(user);
 
-    const versionLink = screen.getByRole("link", { name: /v1\.99\.0/ });
-    expect(versionLink).toHaveAttribute("href", "https://docs.litellm.ai/release_notes");
-    expect(versionLink).toHaveAttribute("target", "_blank");
+    expect(screen.getByText("v1.99.0")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /v1\.99\.0/ })).not.toBeInTheDocument();
   });
 
   it("should not render the version badge when the version is unavailable", async () => {
@@ -162,22 +161,18 @@ describe("SidebarAccountMenu", () => {
 
     await openMenu(user);
 
-    expect(screen.queryByRole("link", { name: /^v/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/^v\d/)).not.toBeInTheDocument();
   });
 
-  it("should show the bouncing icon by default", async () => {
+  it("offers only the new-feature indicator toggle; upstream blog, prompt and icon toggles are gone", async () => {
     const user = userEvent.setup();
     renderWithProviders(<SidebarAccountMenu onLogout={mockOnLogout} />);
     await openMenu(user);
-    expect(screen.getByTitle("Thanks for using LiteLLM!")).toBeInTheDocument();
-  });
-
-  it("should hide the bouncing icon when Hide Bouncing Icon is enabled", async () => {
-    const user = userEvent.setup();
-    mockUseDisableBouncingIconImpl = () => true;
-    renderWithProviders(<SidebarAccountMenu onLogout={mockOnLogout} />);
-    await openMenu(user);
-    expect(screen.queryByTitle("Thanks for using LiteLLM!")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Toggle hide new feature indicators")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Toggle hide all prompts")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Toggle hide blog posts")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Toggle hide bouncing icon")).not.toBeInTheDocument();
+    expect(screen.queryByText("🌴")).not.toBeInTheDocument();
   });
 
   it("wires the email row to the shared copy button", async () => {
@@ -241,22 +236,6 @@ describe("SidebarAccountMenu", () => {
     const localStorageUtils = vi.mocked(await import("@/utils/localStorageUtils"));
     expect(localStorageUtils.removeLocalStorageItem).toHaveBeenCalledWith("disableShowNewBadge");
     expect(localStorageUtils.emitLocalStorageChange).toHaveBeenCalledWith("disableShowNewBadge");
-  });
-
-  it("should toggle hide all prompts on", async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<SidebarAccountMenu onLogout={mockOnLogout} />);
-
-    await openMenu(user);
-
-    const toggle = screen.getByLabelText("Toggle hide all prompts");
-    expect(toggle).not.toBeChecked();
-
-    await user.click(toggle);
-
-    const localStorageUtils = vi.mocked(await import("@/utils/localStorageUtils"));
-    expect(localStorageUtils.setLocalStorageItem).toHaveBeenCalledWith("disableShowPrompts", "true");
-    expect(localStorageUtils.emitLocalStorageChange).toHaveBeenCalledWith("disableShowPrompts");
   });
 
   it("should initialize hide new feature indicators from localStorage", async () => {

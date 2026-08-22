@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Select, Button, Card, Typography, Spin, Tag } from "antd";
 import { SaveOutlined, PlusOutlined } from "@ant-design/icons";
-import { DeprecationBanner } from "@/components/DeprecationBanner";
 import {
   getGeneralSettingsCall,
   updateConfigFieldSetting,
@@ -94,7 +93,6 @@ const MCPNetworkSettings: React.FC<MCPNetworkSettingsProps> = ({ accessToken }) 
 
   return (
     <div className="space-y-6 p-4">
-      <DeprecationBanner featureName="MCP Network Settings and the internal-network-only flag" />
       <div>
         <Text className="text-lg font-semibold">Private IP Ranges</Text>
         <p className="text-sm text-gray-500 mt-1">

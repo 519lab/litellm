@@ -1,6 +1,6 @@
 /* @vitest-environment jsdom */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render } from "@testing-library/react";
+import { act, render } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ModelsAndEndpointsView from "./ModelsAndEndpointsView";
 
@@ -124,58 +124,6 @@ describe("ModelsAndEndpointsView", () => {
       </QueryClientProvider>,
     );
     expect(await findByText("Model Management", {}, { timeout: 10000 })).toBeInTheDocument();
-  });
-
-  it("should show Cost Optimization feedback banner by default", async () => {
-    localStorageMock.clear();
-    const queryClient = createQueryClient();
-    const { findByText } = render(
-      <QueryClientProvider client={queryClient}>
-        <ModelsAndEndpointsView premiumUser={false} teams={[]} />
-      </QueryClientProvider>,
-    );
-    expect(await findByText("Help shape cost optimization", {}, { timeout: 10000 })).toBeInTheDocument();
-  });
-
-  it("should hide Cost Optimization feedback banner when dismiss button is clicked and persist to localStorage", async () => {
-    localStorageMock.clear();
-    const queryClient = createQueryClient();
-    const { findByText, queryByText, container } = render(
-      <QueryClientProvider client={queryClient}>
-        <ModelsAndEndpointsView premiumUser={false} teams={[]} />
-      </QueryClientProvider>,
-    );
-
-    // Wait for banner to appear
-    expect(await findByText("Help shape cost optimization", {}, { timeout: 10000 })).toBeInTheDocument();
-
-    // Find and click dismiss button (X button)
-    const dismissButton = container.querySelector('button[aria-label="Dismiss banner"]');
-    expect(dismissButton).not.toBeNull();
-    fireEvent.click(dismissButton!);
-
-    // Banner should be hidden
-    expect(queryByText("Help shape cost optimization")).not.toBeInTheDocument();
-
-    // LocalStorage should be updated
-    expect(localStorageMock.getItem("hideCostOptimizationFeedbackBanner")).toBe("true");
-  });
-
-  it("should keep Cost Optimization feedback banner hidden across remounts once dismissed", async () => {
-    // Set localStorage to hide banner
-    localStorageMock.setItem("hideCostOptimizationFeedbackBanner", "true");
-    const queryClient = createQueryClient();
-    const { findByText, queryByText } = render(
-      <QueryClientProvider client={queryClient}>
-        <ModelsAndEndpointsView premiumUser={false} teams={[]} />
-      </QueryClientProvider>,
-    );
-
-    // Wait for component to render
-    await findByText("Model Management", {}, { timeout: 10000 });
-
-    // Banner should not be visible
-    expect(queryByText("Help shape cost optimization")).not.toBeInTheDocument();
   });
 
   it("should pass model IDs (not model names) to HealthCheckComponent as all_models_on_proxy", async () => {
