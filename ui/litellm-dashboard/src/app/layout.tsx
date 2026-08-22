@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 
 import AntdGlobalProvider from "@/contexts/AntdGlobalProvider";
+import ColorSchemeProvider from "@/contexts/ColorSchemeProvider";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ReactQueryProvider from "@/contexts/ReactQueryProvider";
 
@@ -20,13 +21,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
-        <ReactQueryProvider>
-          <AntdGlobalProvider>
-            <AuthProvider>{children}</AuthProvider>
-          </AntdGlobalProvider>
-        </ReactQueryProvider>
+        <ColorSchemeProvider>
+          <ReactQueryProvider>
+            <AntdGlobalProvider>
+              <AuthProvider>{children}</AuthProvider>
+            </AntdGlobalProvider>
+          </ReactQueryProvider>
+        </ColorSchemeProvider>
       </body>
     </html>
   );

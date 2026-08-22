@@ -14,7 +14,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/cva.config";
-import { ChevronsUpDown, Crown, IdCard, LogOut, Mail, ShieldCheck } from "lucide-react";
+import { ChevronsUpDown, Crown, IdCard, LogOut, Mail, Monitor, Moon, ShieldCheck, Sun } from "lucide-react";
+import { useTheme } from "next-themes";
 import React from "react";
 
 const RELEASE_NOTES_URL = "https://docs.litellm.ai/release_notes";
@@ -51,6 +52,40 @@ function initialsFromIdentity(email: string | null, userId: string | null): stri
   }
   return "?";
 }
+
+const COLOR_SCHEMES = [
+  { value: "light", label: "Light", icon: <Sun className="size-4" /> },
+  { value: "dark", label: "Dark", icon: <Moon className="size-4" /> },
+  { value: "system", label: "System", icon: <Monitor className="size-4" /> },
+] as const;
+
+const ColorSchemePicker: React.FC = () => {
+  const { theme, setTheme } = useTheme();
+  const current = theme ?? "system";
+  return (
+    <div role="radiogroup" aria-label="Appearance" className="flex rounded-md border border-border p-0.5">
+      {COLOR_SCHEMES.map((scheme) => (
+        <Button
+          key={scheme.value}
+          type="button"
+          role="radio"
+          aria-checked={current === scheme.value}
+          aria-label={scheme.label}
+          title={scheme.label}
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => setTheme(scheme.value)}
+          className={cn(
+            "size-7 text-muted-foreground",
+            current === scheme.value && "bg-accent text-accent-foreground shadow-sm",
+          )}
+        >
+          {scheme.icon}
+        </Button>
+      ))}
+    </div>
+  );
+};
 
 const InfoRow: React.FC<{ icon: React.ReactNode; label: string; children: React.ReactNode }> = ({
   icon,
@@ -217,6 +252,9 @@ const SidebarAccountMenu: React.FC<SidebarAccountMenuProps> = ({ onLogout, colla
           </InfoRow>
           <InfoRow icon={<IdCard className="size-[17px]" />} label="User ID">
             <MonoValue value={userId} copyLabel="Copy user ID" />
+          </InfoRow>
+          <InfoRow icon={<Sun className="size-[17px]" />} label="Appearance">
+            <ColorSchemePicker />
           </InfoRow>
         </div>
 

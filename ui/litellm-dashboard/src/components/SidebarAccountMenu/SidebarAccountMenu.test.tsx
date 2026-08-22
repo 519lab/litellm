@@ -1,6 +1,6 @@
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { renderWithProviders, screen, waitFor } from "../../../tests/test-utils";
+import { renderWithProviders, screen, waitFor, within } from "../../../tests/test-utils";
 import SidebarAccountMenu from "./SidebarAccountMenu";
 
 interface AuthMock {
@@ -28,6 +28,11 @@ let mockGetLocalStorageItemImpl = (key: string): string | null => {
   if (key === "disableShowPrompts") return null;
   return null;
 };
+
+const { mockSetTheme, themeState } = vi.hoisted(() => ({ mockSetTheme: vi.fn(), themeState: { theme: "system" } }));
+vi.mock("next-themes", () => ({
+  useTheme: () => ({ theme: themeState.theme, resolvedTheme: themeState.theme, setTheme: mockSetTheme }),
+}));
 
 vi.mock("@/app/(dashboard)/hooks/useAuthorized", () => ({
   default: () => mockUseAuthorizedImpl(),
@@ -296,5 +301,19 @@ describe("SidebarAccountMenu", () => {
     await openMenu(user);
 
     expect(screen.getByText("-")).toBeInTheDocument();
+  });
+
+  it("offers Light, Dark and System appearance and applies the chosen one", async () => {
+    themeState.theme = "system";
+    const user = userEvent.setup();
+    renderWithProviders(<SidebarAccountMenu onLogout={mockOnLogout} />);
+    await openMenu(user);
+
+    const group = screen.getByRole("radiogroup", { name: "Appearance" });
+    expect(within(group).getByRole("radio", { name: "System" })).toHaveAttribute("aria-checked", "true");
+    expect(within(group).getByRole("radio", { name: "Dark" })).toHaveAttribute("aria-checked", "false");
+
+    await user.click(within(group).getByRole("radio", { name: "Dark" }));
+    expect(mockSetTheme).toHaveBeenCalledWith("dark");
   });
 });
