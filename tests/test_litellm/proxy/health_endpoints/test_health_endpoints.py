@@ -1060,6 +1060,31 @@ async def test_health_services_endpoint_rejects_unknown_service():
 
 
 @pytest.mark.asyncio
+async def test_health_services_endpoint_prometheus_healthy():
+    from litellm.proxy.health_endpoints._health_endpoints import (
+        health_services_endpoint,
+    )
+
+    with patch("litellm.success_callback", ["prometheus"]):
+        result = await health_services_endpoint(service="prometheus")
+
+    assert result["status"] == "healthy"
+    assert "Prometheus" in result["message"]
+
+
+@pytest.mark.asyncio
+async def test_health_services_endpoint_prometheus_not_in_callbacks():
+    from litellm.proxy.health_endpoints._health_endpoints import (
+        health_services_endpoint,
+    )
+
+    with patch("litellm.success_callback", []):
+        result = await health_services_endpoint(service="prometheus")
+
+    assert result["status"] == "unhealthy"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "role",
     [

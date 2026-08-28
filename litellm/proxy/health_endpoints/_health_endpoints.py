@@ -203,6 +203,7 @@ async def health_services_endpoint(
             "galileo",
             "newrelic",
             "sqs",
+            "prometheus",
         ]:
             raise HTTPException(
                 status_code=400,
@@ -226,7 +227,7 @@ async def health_services_endpoint(
             service == "openmeter"
             or service == "braintrust"
             or service == "generic_api"
-            or (service_in_success_callbacks and service != "langfuse")
+            or (service_in_success_callbacks and service not in ("langfuse", "prometheus"))
         ):
             _ = await litellm.acompletion(
                 model="openai/litellm-mock-response-model",
@@ -341,6 +342,14 @@ async def health_services_endpoint(
                 "status": response["status"],
                 "message": response["error_message"],
             }
+        elif service == "prometheus":
+            try:
+                import prometheus_client  # noqa: F401  # just verify importable
+            except ImportError:
+                return {"status": "unhealthy", "message": "prometheus_client not installed"}
+            if not service_in_success_callbacks:
+                return {"status": "unhealthy", "message": "PrometheusLogger not in success_callbacks"}
+            return {"status": "healthy", "message": "Prometheus metrics endpoint is active"}
 
         if service == "slack" or service == "slack_budget_alerts":
             if "slack" in general_settings.get("alerting", []):
