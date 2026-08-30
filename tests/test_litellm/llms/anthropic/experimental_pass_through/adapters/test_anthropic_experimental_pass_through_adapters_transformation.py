@@ -3147,3 +3147,60 @@ def test_translate_anthropic_tools_to_openai_preserves_parameters_type():
     params = new_tools[0]["function"]["parameters"]
     assert params["type"] == "object"
     assert new_tools[0]["type"] == "function"
+
+
+def test_stop_sequences_translated_to_openai_stop():
+    """Regression: stop_sequences must be translated to stop for non-Anthropic backends.
+
+    Before the fix, stop_sequences was copied through raw and silently dropped by
+    litellm's OpenAI param normalization, so stop sequences never fired.
+    """
+    adapter = LiteLLMAnthropicMessagesAdapter()
+    request = {
+        "model": "gpt-4o",
+        "max_tokens": 10,
+        "messages": [{"role": "user", "content": "hi"}],
+        "stop_sequences": ["STOP", "END"],
+    }
+
+    result, _ = adapter.translate_anthropic_to_openai(request)  # type: ignore[arg-type]
+
+    assert "stop_sequences" not in result
+    assert result.get("stop") == ["STOP", "END"]
+
+
+@pytest.mark.parametrize(
+    "tool_result_content",
+    [None, []],
+    ids=["content_none", "content_empty_list"],
+)
+def test_tool_result_with_absent_content_emits_tool_message(tool_result_content):
+    """Regression: tool_result blocks with content=None or content=[] were silently
+    dropped, leaving an assistant tool_calls message with no matching role=tool reply.
+    OpenAI hard-400s on that shape, so the next turn would always fail.
+    """
+    adapter = LiteLLMAnthropicMessagesAdapter()
+    tool_use_id = "toolu_01abc"
+    request = {
+        "model": "gpt-4o",
+        "max_tokens": 10,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tool_use_id,
+                        "content": tool_result_content,
+                    }
+                ],
+            }
+        ],
+    }
+
+    result, _ = adapter.translate_anthropic_to_openai(request)  # type: ignore[arg-type]
+
+    tool_messages = [m for m in result["messages"] if m.get("role") == "tool"]
+    assert len(tool_messages) == 1, f"expected 1 tool message, got {len(tool_messages)}"
+    assert tool_messages[0]["tool_call_id"] == tool_use_id
+    assert tool_messages[0]["content"] == ""

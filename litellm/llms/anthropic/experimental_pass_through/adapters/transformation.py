@@ -326,6 +326,7 @@ class LiteLLMAnthropicMessagesAdapter:
             "messages",
             "metadata",
             "system",
+            "stop_sequences",
             "tool_choice",
             "tools",
             "thinking",
@@ -399,7 +400,8 @@ class LiteLLMAnthropicMessagesAdapter:
                                 self._add_cache_control_if_applicable(content, doc_obj, model)
                                 new_user_content_list.append(doc_obj)  # type: ignore
                         elif content.get("type") == "tool_result":
-                            if "content" not in content:
+                            tool_result_content = content.get("content")
+                            if "content" not in content or tool_result_content is None:
                                 tool_result = ChatCompletionToolMessage(
                                     role="tool",
                                     tool_call_id=content.get("tool_use_id", ""),
@@ -407,22 +409,30 @@ class LiteLLMAnthropicMessagesAdapter:
                                 )
                                 self._add_cache_control_if_applicable(content, tool_result, model)
                                 tool_message_list.append(tool_result)  # type: ignore[arg-type]
-                            elif isinstance(content.get("content"), str):
+                            elif isinstance(tool_result_content, str):
                                 tool_result = ChatCompletionToolMessage(
                                     role="tool",
                                     tool_call_id=content.get("tool_use_id", ""),
-                                    content=str(content.get("content", "")),
+                                    content=tool_result_content,
                                 )
                                 self._add_cache_control_if_applicable(content, tool_result, model)
                                 tool_message_list.append(tool_result)  # type: ignore[arg-type]
-                            elif isinstance(content.get("content"), list):
+                            elif isinstance(tool_result_content, list):
                                 # Combine all content items into a single tool message
                                 # to avoid creating multiple tool_result blocks with the same ID
                                 # (each tool_use must have exactly one tool_result)
-                                content_items = list(content.get("content", []))
+                                content_items = list(tool_result_content)
 
+                                if len(content_items) == 0:
+                                    tool_result = ChatCompletionToolMessage(
+                                        role="tool",
+                                        tool_call_id=content.get("tool_use_id", ""),
+                                        content="",
+                                    )
+                                    self._add_cache_control_if_applicable(content, tool_result, model)
+                                    tool_message_list.append(tool_result)  # pyright: ignore[reportArgumentType]  # TypedDict subtype narrowing
                                 # For single-item content, maintain backward compatibility with string/url format
-                                if len(content_items) == 1:
+                                elif len(content_items) == 1:
                                     c = content_items[0]
                                     if isinstance(c, str):
                                         tool_result = ChatCompletionToolMessage(
@@ -889,6 +899,16 @@ class LiteLLMAnthropicMessagesAdapter:
                     ChatCompletionSystemMessage(role="system", content=openai_system_content),  # type: ignore
                 )
 
+    def _translate_stop_sequences_to_openai(
+        self,
+        anthropic_message_request: AnthropicMessagesRequest,
+        new_kwargs: ChatCompletionRequest,
+    ) -> None:
+        """Translate Anthropic stop_sequences to OpenAI stop."""
+        stop_sequences = anthropic_message_request.get("stop_sequences")
+        if stop_sequences is not None:
+            new_kwargs["stop"] = stop_sequences  # pyright: ignore[reportArgumentType]  # stop_sequences is a list[str] compatible with stop
+
     def _translate_metadata_to_openai(
         self,
         anthropic_message_request: AnthropicMessagesRequest,
@@ -1078,6 +1098,11 @@ class LiteLLMAnthropicMessagesAdapter:
             "model": anthropic_message_request["model"],
             "messages": new_messages,
         }
+        ## CONVERT STOP SEQUENCES
+        self._translate_stop_sequences_to_openai(
+            anthropic_message_request=anthropic_message_request,
+            new_kwargs=new_kwargs,
+        )
         ## CONVERT METADATA (user_id + litellm metadata)
         self._translate_metadata_to_openai(
             anthropic_message_request=anthropic_message_request,
