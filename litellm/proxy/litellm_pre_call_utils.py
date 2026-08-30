@@ -4,7 +4,7 @@ import json
 import re
 import time
 from collections import OrderedDict
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Final, List, Optional, Union
 
 from fastapi import HTTPException, Request
 from pydantic import ValidationError as PydanticValidationError
@@ -205,6 +205,10 @@ _CLIENT_PRICING_CONTROL_FIELDS = frozenset(CustomPricingLiteLLMParams.model_fiel
 # ``use_custom_pricing_for_model``; strip from metadata for the same reason.
 _CLIENT_PRICING_METADATA_FIELDS = frozenset({"model_info"})
 _ALLOW_CLIENT_PRICING_OVERRIDE_METADATA_KEY = "allow_client_pricing_override"
+# ``attempted_fallbacks`` and ``original_model_group`` are written by the router
+# and read by spend logs as fact; a client value has no legitimate meaning and no
+# key or team setting keeps it, so the strip is never gated.
+_ROUTER_RESERVED_METADATA_FIELDS: Final = frozenset({"attempted_fallbacks", "original_model_group"})
 
 # Request fields whose value, when URL-valued, becomes the outbound destination
 # for a provider call. Letting a proxy caller pin the destination is an SSRF
@@ -353,6 +357,20 @@ def _strip_client_pricing_overrides(data: Dict[str, Any]) -> None:
             "metadata to keep these values.",
             ", ".join(stripped),
         )
+
+
+def _strip_router_reserved_metadata(
+    data: Dict[str, Any],  # mutable-ok: strips in place on the request body the pre-call pipeline threads through
+) -> None:
+    """Drop the router-owned fallback stamps from any client-supplied metadata bucket."""
+    for metadata_key in ("metadata", "litellm_metadata"):
+        if not isinstance(metadata := data.get(metadata_key), dict):
+            continue
+        for field in _ROUTER_RESERVED_METADATA_FIELDS & metadata.keys():
+            metadata.pop(field)
+            verbose_proxy_logger.debug(
+                "Stripped router-reserved metadata field from request body: %s.%s", metadata_key, field
+            )
 
 
 def _get_metadata_variable_name(request: Request) -> str:
@@ -1517,6 +1535,7 @@ async def add_litellm_data_to_request(
     # would silently skip the field.
     if not _key_or_team_allows_client_pricing_override(user_api_key_dict):
         _strip_client_pricing_overrides(data)
+    _strip_router_reserved_metadata(data)
 
     if not _allow_client_message_redaction_opt_out and litellm.turn_off_message_logging is True:
         _strip_client_message_redaction_opt_out(data)
