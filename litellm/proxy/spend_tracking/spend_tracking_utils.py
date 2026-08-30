@@ -19,7 +19,7 @@ from litellm.constants import (
 from litellm.constants import (
     MAX_STRING_LENGTH_PROMPT_IN_DB as DEFAULT_MAX_STRING_LENGTH_PROMPT_IN_DB,
 )
-from litellm.constants import REDACTED_BY_LITELM_STRING
+from litellm.constants import NON_INFERENCE_CALL_TYPES, REDACTED_BY_LITELM_STRING
 from litellm.litellm_core_utils.core_helpers import (
     get_litellm_metadata_from_kwargs,
     reconstruct_model_name,
@@ -417,7 +417,7 @@ def get_logging_payload(kwargs, response_obj, start_time, end_time) -> SpendLogs
             organization_id=metadata.get("user_api_key_org_id") or "",
             metadata=safe_dumps(clean_metadata),
             cache_key=cache_key,
-            spend=kwargs.get("response_cost", 0),
+            spend=0 if call_type in NON_INFERENCE_CALL_TYPES else kwargs.get("response_cost", 0),
             total_tokens=usage.get("total_tokens", standard_logging_total_tokens),
             prompt_tokens=usage.get("prompt_tokens", standard_logging_prompt_tokens),
             completion_tokens=usage.get("completion_tokens", standard_logging_completion_tokens),

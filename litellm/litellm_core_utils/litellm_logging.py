@@ -50,6 +50,7 @@ from litellm.caching.caching_handler import LLMCachingHandler
 from litellm.constants import (
     DEFAULT_MOCK_RESPONSE_COMPLETION_TOKEN_COUNT,
     DEFAULT_MOCK_RESPONSE_PROMPT_TOKEN_COUNT,
+    NON_INFERENCE_CALL_TYPES,
     SENTRY_DENYLIST,
     SENTRY_PII_DENYLIST,
 )
@@ -1390,6 +1391,9 @@ class Logging(LiteLLMLoggingBaseClass):
             cache_hit = self.model_call_details.get("cache_hit", False)
 
         if cache_hit is True:
+            return 0.0
+
+        if self.call_type in NON_INFERENCE_CALL_TYPES:
             return 0.0
 
         transformed_result = self._generate_content_result_as_model_response(result)

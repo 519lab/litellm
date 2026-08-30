@@ -2765,3 +2765,49 @@ async def test_compression_savings_survive_to_spend_log_payload_metadata(monkeyp
         "tokens_saved": 7000,
         "source": "compression_interception",
     }
+
+
+def test_get_logging_payload_spend_is_zero_for_non_inference_call_types():
+    """GET/DELETE/CANCEL responses calls must never produce a non-zero spend."""
+    import datetime
+    from datetime import timezone
+    from litellm.constants import NON_INFERENCE_CALL_TYPES
+
+    for call_type in NON_INFERENCE_CALL_TYPES:
+        now = datetime.datetime.now(timezone.utc)
+        payload = get_logging_payload(
+            kwargs={
+                "call_type": call_type,
+                "litellm_params": {"metadata": {}},
+                "response_cost": 0.05,
+                "model": "gpt-4o",
+            },
+            response_obj={
+                "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+            },
+            start_time=now,
+            end_time=now,
+        )
+        assert payload["spend"] == 0, f"Expected spend=0 for {call_type}, got {payload['spend']}"
+
+
+def test_get_logging_payload_spend_is_nonzero_for_inference_calls():
+    """Ordinary completion calls must still bill normally."""
+    import datetime
+    from datetime import timezone
+
+    now = datetime.datetime.now(timezone.utc)
+    payload = get_logging_payload(
+        kwargs={
+            "call_type": "acompletion",
+            "litellm_params": {"metadata": {}},
+            "response_cost": 0.05,
+            "model": "gpt-4o",
+        },
+        response_obj={
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+        },
+        start_time=now,
+        end_time=now,
+    )
+    assert payload["spend"] == 0.05

@@ -1,6 +1,6 @@
 import os
 import sys
-from typing import List, Literal, Optional
+from typing import Final, FrozenSet, List, Literal, Optional
 
 from litellm.litellm_core_utils.env_utils import get_env_int, get_env_int_or_none
 
@@ -1457,6 +1457,36 @@ SPEND_LOG_QUEUE_SIZE_THRESHOLD = int(os.getenv("SPEND_LOG_QUEUE_SIZE_THRESHOLD",
 SPEND_LOG_QUEUE_POLL_INTERVAL = float(os.getenv("SPEND_LOG_QUEUE_POLL_INTERVAL", 2.0))
 RESPONSES_SESSION_LOOKUP_MAX_ATTEMPTS = max(1, int(os.getenv("RESPONSES_SESSION_LOOKUP_MAX_ATTEMPTS", "3")))
 RESPONSES_SESSION_LOOKUP_RETRY_INTERVAL = float(os.getenv("RESPONSES_SESSION_LOOKUP_RETRY_INTERVAL", "0.2"))
+NON_INFERENCE_CALL_TYPES: Final[FrozenSet[str]] = frozenset(
+    {
+        "get_responses",
+        "aget_responses",
+        "delete_responses",
+        "adelete_responses",
+        "cancel_responses",
+        "acancel_responses",
+        "compact_responses",
+        "acompact_responses",
+        "list_input_items",
+        "alist_input_items",
+        "vector_store_create",
+        "avector_store_create",
+        "vector_store_search",
+        "avector_store_search",
+        "vector_store_file_create",
+        "avector_store_file_create",
+        "vector_store_file_list",
+        "avector_store_file_list",
+        "vector_store_file_retrieve",
+        "avector_store_file_retrieve",
+        "vector_store_file_content",
+        "avector_store_file_content",
+        "vector_store_file_update",
+        "avector_store_file_update",
+        "vector_store_file_delete",
+        "avector_store_file_delete",
+    }
+)
 SPEND_COUNTER_RESEED_LOCKS_MAX_SIZE = int(os.getenv("SPEND_COUNTER_RESEED_LOCKS_MAX_SIZE", 10000))
 DEFAULT_CRON_JOB_LOCK_TTL_SECONDS = int(os.getenv("DEFAULT_CRON_JOB_LOCK_TTL_SECONDS", 60))  # 1 minute
 PROXY_BUDGET_RESCHEDULER_MIN_TIME = int(os.getenv("PROXY_BUDGET_RESCHEDULER_MIN_TIME", 597))

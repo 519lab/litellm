@@ -16,6 +16,7 @@ from typing import (
 
 import litellm
 from litellm._logging import verbose_logger
+from litellm.constants import NON_INFERENCE_CALL_TYPES
 from litellm.integrations._types.open_inference import (
     OpenInferenceSpanKindValues,
     SpanAttributes,
@@ -1484,21 +1485,28 @@ class OpenTelemetry(OTELGenAISemconvMixin, CustomLogger):
 
         common_attrs = self._filter_metric_attributes(common_attrs)
 
+        is_non_inference = kwargs.get("call_type") in NON_INFERENCE_CALL_TYPES
         if self._operation_duration_histogram:
             self._operation_duration_histogram.record(duration_s, attributes=common_attrs)
-            if response_obj and (usage := response_obj.get("usage")) and self._token_usage_histogram:
+            if (
+                not is_non_inference
+                and response_obj
+                and (usage := response_obj.get("usage"))
+                and self._token_usage_histogram
+            ):
                 in_attrs = {**common_attrs, TOKEN_TYPE_ATTRIBUTE: "input"}
                 out_attrs = {**common_attrs, TOKEN_TYPE_ATTRIBUTE: "output"}
                 self._token_usage_histogram.record(usage.get("prompt_tokens", 0), attributes=in_attrs)
                 self._token_usage_histogram.record(usage.get("completion_tokens", 0), attributes=out_attrs)
 
         cost = kwargs.get("response_cost")
-        if self._cost_histogram and cost:
+        if self._cost_histogram and cost and not is_non_inference:
             self._cost_histogram.record(cost, attributes=common_attrs)
 
         # Record latency metrics (TTFT, TPOT, and Total Generation Time)
         self._record_time_to_first_token_metric(kwargs, common_attrs)
-        self._record_time_per_output_token_metric(kwargs, response_obj, end_time, duration_s, common_attrs)
+        if not is_non_inference:
+            self._record_time_per_output_token_metric(kwargs, response_obj, end_time, duration_s, common_attrs)
         self._record_response_duration_metric(kwargs, end_time, common_attrs)
 
     @staticmethod

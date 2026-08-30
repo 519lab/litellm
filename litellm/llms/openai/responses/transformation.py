@@ -9,10 +9,10 @@ from pydantic import BaseModel, ValidationError
 import litellm
 from litellm._logging import verbose_logger
 from litellm.litellm_core_utils.core_helpers import process_response_headers
-from litellm.litellm_core_utils.url_utils import encode_url_path_segment
 from litellm.litellm_core_utils.llm_response_utils.convert_dict_to_response import (
     _safe_convert_created_field,
 )
+from litellm.litellm_core_utils.url_utils import encode_url_path_segment
 from litellm.llms.base_llm.responses.transformation import BaseResponsesAPIConfig
 from litellm.secret_managers.main import get_secret_str
 from litellm.types.llms.openai import *

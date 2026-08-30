@@ -21,6 +21,7 @@ from litellm.integrations.opentelemetry import (
     _build_metric_attribute_filter,
     _resolve_metric_attribute_filter,
 )
+from litellm.constants import NON_INFERENCE_CALL_TYPES
 from litellm.integrations.otel.model.metadata import time_to_first_chunk_seconds
 from litellm.integrations.otel.model.semconv import Metric, resolve_operation
 from litellm.integrations.otel.model.utils import to_seconds
@@ -98,16 +99,19 @@ class GenAIMetricRecorder:
     ) -> None:
         common_attrs = self._filter_attributes(self._common_attributes(kwargs))
         duration_s = (end_time - start_time).total_seconds()
+        is_non_inference = kwargs.get("call_type") in NON_INFERENCE_CALL_TYPES
 
         self._metrics.operation_duration.record(duration_s, attributes=common_attrs)
-        self._record_token_usage(response_obj, common_attrs)
+        if not is_non_inference:
+            self._record_token_usage(response_obj, common_attrs)
 
         cost = kwargs.get("response_cost")
-        if cost:
+        if cost and not is_non_inference:
             self._metrics.token_cost.record(cost, attributes=common_attrs)
 
         self._record_time_to_first_token(kwargs, common_attrs)
-        self._record_time_per_output_token(kwargs, response_obj, end_time, duration_s, common_attrs)
+        if not is_non_inference:
+            self._record_time_per_output_token(kwargs, response_obj, end_time, duration_s, common_attrs)
         self._record_response_duration(kwargs, end_time, common_attrs)
 
     # ------------------------------------------------------------------ #

@@ -17,6 +17,7 @@ class GenAIOperation(str, Enum):
     CREATE_AGENT = "create_agent"  # reserved for future agent spans
     INVOKE_AGENT = "invoke_agent"  # reserved for future agent spans
     EXECUTE_TOOL = "execute_tool"  # MCP tool-call spans
+    LITELLM_RESPONSES_MANAGEMENT = "litellm.responses_management"  # GET/DELETE/CANCEL /v1/responses/*
 
 
 class GenAIProvider(str, Enum):
@@ -300,6 +301,16 @@ _OPERATION_BY_CALL_TYPE: dict[str, GenAIOperation] = {
     "aembedding": GenAIOperation.EMBEDDINGS,
     "responses": GenAIOperation.CHAT,
     "aresponses": GenAIOperation.CHAT,
+    "get_responses": GenAIOperation.LITELLM_RESPONSES_MANAGEMENT,
+    "aget_responses": GenAIOperation.LITELLM_RESPONSES_MANAGEMENT,
+    "delete_responses": GenAIOperation.LITELLM_RESPONSES_MANAGEMENT,
+    "adelete_responses": GenAIOperation.LITELLM_RESPONSES_MANAGEMENT,
+    "cancel_responses": GenAIOperation.LITELLM_RESPONSES_MANAGEMENT,
+    "acancel_responses": GenAIOperation.LITELLM_RESPONSES_MANAGEMENT,
+    "compact_responses": GenAIOperation.LITELLM_RESPONSES_MANAGEMENT,
+    "acompact_responses": GenAIOperation.LITELLM_RESPONSES_MANAGEMENT,
+    "list_input_items": GenAIOperation.LITELLM_RESPONSES_MANAGEMENT,
+    "alist_input_items": GenAIOperation.LITELLM_RESPONSES_MANAGEMENT,
     "call_mcp_tool": GenAIOperation.EXECUTE_TOOL,
 }
 
