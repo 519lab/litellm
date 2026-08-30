@@ -1947,15 +1947,6 @@ class ProxyBaseLLMRequestProcessing:
                     except Exception as e:
                         verbose_proxy_logger.exception("Error in orphaned streaming async logging: %s", e)
 
-        # Always return the client-requested model name (not provider-prefixed internal identifiers)
-        # for OpenAI-compatible responses.
-        if requested_model_from_client:
-            _override_openai_response_model(
-                response_obj=response,
-                requested_model=requested_model_from_client,
-                log_context=f"litellm_call_id={logging_obj.litellm_call_id}",
-            )
-
         hidden_params = get_hidden_params_dict(response)  # get any updated response headers
         additional_headers = hidden_params.get("additional_headers", {}) or {}
 
@@ -1965,6 +1956,16 @@ class ProxyBaseLLMRequestProcessing:
             if recover_response_cost
             else response_cost
         )
+
+        # Always return the client-requested model name (not provider-prefixed internal identifiers)
+        # for OpenAI-compatible responses. Must come after cost reads so the header prices the
+        # deployment model, not the client alias.
+        if requested_model_from_client:
+            _override_openai_response_model(
+                response_obj=response,
+                requested_model=requested_model_from_client,
+                log_context=f"litellm_call_id={logging_obj.litellm_call_id}",
+            )
 
         fastapi_response.headers.update(
             ProxyBaseLLMRequestProcessing.get_custom_headers(

@@ -1,7 +1,7 @@
 import asyncio
 import copy
 import datetime
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Final, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -4160,7 +4160,9 @@ class TestResponseCostHeaderForTypedDictResponses:
         logging_obj._on_deferred_stream_complete = None
         return logging_obj
 
-    async def _drive_non_streaming(self, *, monkeypatch, response, logging_obj, route_type, return_result=False):
+    async def _drive_non_streaming(
+        self, *, monkeypatch, response, logging_obj, route_type, return_result=False, client_model=None
+    ):
         import litellm.proxy.common_request_processing as crp
         from litellm.proxy._types import UserAPIKeyAuth as RealUserAPIKeyAuth
 
@@ -4182,7 +4184,9 @@ class TestResponseCostHeaderForTypedDictResponses:
         proxy_logging_obj.post_call_success_hook = fake_post_call_success_hook
 
         fastapi_response = Response()
-        processing_obj = ProxyBaseLLMRequestProcessing(data={"litellm_logging_obj": logging_obj})
+        processing_obj = ProxyBaseLLMRequestProcessing(
+            data={"litellm_logging_obj": logging_obj, **({"model": client_model} if client_model else {})}
+        )
 
         with patch.object(
             ProxyBaseLLMRequestProcessing,
@@ -4467,6 +4471,45 @@ class TestResponseCostHeaderForTypedDictResponses:
         assert "_hidden_params" not in result
         assert fastapi_response.headers["x-ratelimit-limit-input-tokens"] == "25"
         assert fastapi_response.headers["x-litellm-response-cost"] == "0.00123"
+
+    @pytest.mark.asyncio
+    async def test_messages_cost_recompute_prices_provider_model_not_client_alias(self, monkeypatch):
+        """Regression: header cost recompute ran after the response model was restamped to the
+        client alias, so /v1/messages priced an aliased deployment by alias (wrong bucket/rate)
+        while recorded spend used the registry rate. The recompute must see the provider-reported
+        model; the body must still return the client alias."""
+        from litellm.types.utils import AnthropicMessagesResponse
+
+        response = AnthropicMessagesResponse(
+            id="msg_1",
+            type="message",
+            role="assistant",
+            content=[{"type": "text", "text": "hi"}],
+            model="meta-models/Muse-Glimmer-30B",
+            usage={"input_tokens": 10, "output_tokens": 5},
+        )
+        cost_by_model_at_recompute_time: Final = {
+            "meta-models/Muse-Glimmer-30B": 0.003,
+            "muse-glimmer-30b": 0.007,
+        }
+        recompute = MagicMock(side_effect=lambda result: cost_by_model_at_recompute_time[result["model"]])
+        logging_obj = self._build_logging_obj(
+            model_call_details={},
+            response_cost_calculator=recompute,
+        )
+
+        fastapi_response, result = await self._drive_non_streaming(
+            monkeypatch=monkeypatch,
+            response=response,
+            logging_obj=logging_obj,
+            route_type="anthropic_messages",
+            client_model="muse-glimmer-30b",
+            return_result=True,
+        )
+
+        assert fastapi_response.headers["x-litellm-response-cost"] == "0.003"
+        assert result["model"] == "muse-glimmer-30b"
+        recompute.assert_called_once()
 
 
 class TestPreCallWithFallbacksOnLocalRateLimit:
