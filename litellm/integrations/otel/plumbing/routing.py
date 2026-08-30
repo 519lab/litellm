@@ -9,7 +9,7 @@ logger fan requests out to many tenants without needing a logger per tenant.
 """
 
 from collections import OrderedDict
-from typing import Any, Mapping
+from typing import Any, Final, Mapping
 
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.trace import Tracer
@@ -19,11 +19,9 @@ from litellm.integrations.otel.model.config import OpenTelemetryV2Config
 from litellm.integrations.otel.presets import dynamic_otlp_headers
 from litellm.integrations.otel.plumbing.providers import (
     build_tracer_provider,
+    exporter_transport,
     get_tracer,
 )
-
-# Exporter kinds that ignore headers — never rewritten with dynamic credentials.
-_NON_OTLP_KINDS = ("console", "in_memory", "inmemory", "memory")
 
 # Cap on distinct credential-scoped providers held at once. ``dynamic_params``
 # can be populated from request metadata, so an unbounded cache lets a caller
@@ -61,18 +59,27 @@ class TenantTracerCache:
         self._callback_name = callback_name
         self._tracer_name = tracer_name
         self._providers: "OrderedDict[tuple[tuple[str, str], ...], TracerProvider]" = OrderedDict()
+        owned_transports: Final = tuple(
+            exporter_transport(spec.kind) for spec in config.exporters if spec.owner == callback_name
+        )
+        self._credential_routable = "http" in owned_transports or "grpc" in owned_transports
+        self._warned_credential_unroutable = False
 
-    def tracer_for(self, default: Tracer, dynamic_params: Any) -> Tracer:
-        """Return the tracer for this request.
+    def tracer_for(self, default: Tracer, dynamic_params: Any) -> tuple[Tracer, bool]:
+        """Return ``(tracer, detached)`` for this request.
 
-        Use ``default`` unless the request's dynamic credentials require a
-        credential-scoped tracer, in which case build (or reuse) one. The cache
-        is a bounded LRU: the least-recently-used provider is flushed and shut
-        down on overflow so its exporter threads don't accumulate.
+        ``tracer`` is a credential-scoped tracer when the request carries dynamic
+        OTLP credentials for an exporter this callback owns, otherwise ``default``.
+        ``detached`` is True when a credential-scoped tracer is returned: spans on
+        a different OTLP backend than the request-root span must root a fresh trace
+        (with a link back) rather than parenting into the request trace, which would
+        leave the tenant account holding a child whose parent it never received.
+        The cache is a bounded LRU: the least-recently-used provider is flushed and
+        shut down on overflow so its exporter threads don't accumulate.
         """
-        headers = dynamic_otlp_headers(self._callback_name, dynamic_params)
+        headers = self._credential_headers(dynamic_params)
         if not headers:
-            return default
+            return default, False
         cache_key = tuple(sorted(headers.items()))
         provider = self._providers.get(cache_key)
         if provider is not None:
@@ -83,7 +90,27 @@ class TenantTracerCache:
             if len(self._providers) > _MAX_CACHED_PROVIDERS:
                 _, evicted = self._providers.popitem(last=False)
                 _shutdown_provider(evicted)
-        return get_tracer(provider, self._tracer_name)
+        return get_tracer(provider, self._tracer_name), True
+
+    def _credential_headers(self, dynamic_params: Any) -> Mapping[str, str]:
+        """The per-request dynamic OTLP credentials, if this cache can apply them.
+
+        A callback owning only a console/in_memory exporter has nowhere to stamp
+        them, so the span would export to the operator's default backend unchanged;
+        routing there and detaching would orphan it on the very backend that holds
+        its parent. Warn once and keep the default tracer.
+        """
+        requested = dynamic_otlp_headers(self._callback_name, dynamic_params) or {}
+        if not requested or self._credential_routable:
+            return requested
+        if not self._warned_credential_unroutable:
+            self._warned_credential_unroutable = True
+            verbose_logger.warning(
+                "OTel V2: %s request carries dynamic credentials, but the callback owns no "
+                "OTLP exporter to stamp them onto; spans export to the default backend.",
+                self._callback_name,
+            )
+        return {}
 
     def _config_with_headers(self, headers: Mapping[str, str]) -> OpenTelemetryV2Config:
         """Clone the config, stamping ``headers`` onto the credential's own exporter.
@@ -100,7 +127,7 @@ class TenantTracerCache:
         exporters = [
             (
                 spec.model_copy(update=header_update)
-                if spec.owner == self._callback_name and spec.kind.lower() not in _NON_OTLP_KINDS
+                if spec.owner == self._callback_name and exporter_transport(spec.kind) != "headerless"
                 else spec
             )
             for spec in self._config.exporters

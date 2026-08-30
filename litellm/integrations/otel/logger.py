@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Callable, Iterator, Mapping, Sequence, ca
 from opentelemetry.context import Context, attach, get_current
 from opentelemetry.sdk._logs import LoggerProvider
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.trace import Span, Tracer, get_current_span, use_span
+from opentelemetry.trace import INVALID_SPAN, Link, Span, Tracer, get_current_span, set_span_in_context, use_span
 
 import litellm
 from litellm._logging import verbose_logger
@@ -66,6 +66,19 @@ if TYPE_CHECKING:
     )
 
 LITELLM_TRACER_NAME = "litellm"
+
+
+def _detach_context(ctx: Context) -> tuple[Context, list[Link]]:
+    """Null out the parent for a span that must root its own trace, linking back.
+
+    When a credential-routed span exports to a different backend than the
+    request root, the tenant account receives a child whose parent it never got.
+    Starting a fresh trace (parent=INVALID_SPAN) with a link back lets the
+    tenant correlate the span without needing the operator-side root.
+    """
+    parent_span_ctx = get_current_span(ctx).get_span_context()
+    links = [Link(context=parent_span_ctx)] if parent_span_ctx and parent_span_ctx.is_valid else []
+    return set_span_in_context(INVALID_SPAN, ctx), links
 
 
 def _span_error_from_exception(
@@ -257,12 +270,15 @@ class OpenTelemetryV2(CustomLogger):
         # callback (the thread-pool case, where the anchor isn't visible here).
         parent_context = resolve_request_span_context()
         if is_recordable_span(get_current_span(parent_context)):
+            tenant_tracer, detached = self._tenant_tracers.tracer_for(self.tracer, call.dynamic_params)
+            span_ctx, span_links = _detach_context(parent_context) if detached else (parent_context, [])
             span = self._emitter.start_span(
                 SpanRole.LLM_CALL,
                 call.provisional_span_name,
-                parent_context=parent_context,
+                parent_context=span_ctx,
                 start_time_ns=start_time_ns,
-                tracer=self._tenant_tracers.tracer_for(self.tracer, call.dynamic_params),
+                tracer=tenant_tracer,
+                links=span_links or None,
             )
         self._open_llm_calls[call_id] = _LLMCallSpan(span=span, start_time_ns=start_time_ns)
         # Evict the oldest open call if the map is over budget. A call that opens
@@ -439,13 +455,16 @@ class OpenTelemetryV2(CustomLogger):
         # Baggage so the span — and the SDK path, which has none — is labeled
         # consistently.
         parent_ctx = self._seed_identity_baggage(data.identity, data.request_model, resolve_request_span_context())
+        tenant_tracer, detached = self._tenant_tracers.tracer_for(self.tracer, call.dynamic_params)
+        emit_ctx, emit_links = _detach_context(parent_ctx) if detached else (parent_ctx, [])
         return self._emitter.emit(
             SpanRole.LLM_CALL,
             data,
-            parent_context=parent_ctx,
+            parent_context=emit_ctx,
             start_time_ns=carrier.start_time_ns,
             end_time_ns=end_time_ns,
-            tracer=self._tenant_tracers.tracer_for(self.tracer, call.dynamic_params),
+            tracer=tenant_tracer,
+            links=emit_links or None,
         )
 
     # ====================================================================== #

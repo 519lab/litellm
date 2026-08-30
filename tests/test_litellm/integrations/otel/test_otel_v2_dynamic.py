@@ -13,7 +13,9 @@ from litellm.integrations.otel.plumbing.routing import TenantTracerCache
 
 
 def _cache(callback_name, exporters=None):
-    cfg = OpenTelemetryV2Config(exporters=exporters or [ExporterSpec(kind="in_memory")])
+    cfg = OpenTelemetryV2Config(
+        exporters=exporters or [ExporterSpec(kind="otlp_http", use_simple_processor=True, owner=callback_name)]
+    )
     return TenantTracerCache(cfg, callback_name, "litellm")
 
 
@@ -109,14 +111,18 @@ def test_provider_cache_is_bounded_and_evicts_lru(monkeypatch):
 def test_no_dynamic_params_uses_default_tracer():
     cache = _cache("arize")
     default = NoOpTracer()
-    assert cache.tracer_for(default, {}) is default
+    tracer, detached = cache.tracer_for(default, {})
+    assert tracer is default
+    assert detached is False
     assert cache._providers == {}
 
 
 def test_non_participating_callback_uses_default_tracer():
     cache = _cache("arize_phoenix")
     default = NoOpTracer()
-    assert cache.tracer_for(default, {"arize_api_key": "K"}) is default
+    tracer, detached = cache.tracer_for(default, {"arize_api_key": "K"})
+    assert tracer is default
+    assert detached is False
     assert cache._providers == {}
 
 
@@ -173,3 +179,54 @@ def test_dynamic_headers_do_not_leak_to_other_owners_exporter():
     assert by_owner["arize"] == "arize-space-id=TEAMX,api_key=TEAMX_KEY"
     assert by_owner[None] == "x=base-collector"
     assert by_owner["langfuse_otel"] == "Authorization=Basic base-langfuse"
+
+
+def test_credential_route_with_owned_otlp_exporter_is_detached():
+    cache = _cache("arize", exporters=[ExporterSpec(kind="otlp_http", owner="arize", use_simple_processor=True)])
+    default = NoOpTracer()
+    tracer, detached = cache.tracer_for(default, {"arize_space_id": "S", "arize_api_key": "K"})
+    assert tracer is not default
+    assert detached is True
+    cache._providers.clear()
+
+
+def test_credential_route_without_owned_otlp_exporter_stays_parented():
+    cache = _cache("arize", exporters=[ExporterSpec(kind="in_memory")])
+    default = NoOpTracer()
+    tracer, detached = cache.tracer_for(default, {"arize_space_id": "S", "arize_api_key": "K"})
+    assert tracer is default
+    assert detached is False
+    assert cache._providers == {}
+
+
+def test_exporter_transport_returns_http_for_otlp_http_kinds():
+    from litellm.integrations.otel.plumbing.providers import exporter_transport
+
+    for kind in ("otlp_http", "http", "http/protobuf", "http/json"):
+        assert exporter_transport(kind) == "http", f"expected http for {kind!r}"
+
+
+def test_exporter_transport_returns_grpc_for_otlp_grpc_kinds():
+    from litellm.integrations.otel.plumbing.providers import exporter_transport
+
+    for kind in ("otlp_grpc", "grpc"):
+        assert exporter_transport(kind) == "grpc", f"expected grpc for {kind!r}"
+
+
+def test_exporter_transport_returns_headerless_for_console_and_in_memory():
+    from litellm.integrations.otel.plumbing.providers import exporter_transport
+
+    for kind in ("console", "in_memory", "inmemory", "memory", "otlp", "grcp", "htttp"):
+        assert exporter_transport(kind) == "headerless", f"expected headerless for {kind!r}"
+
+
+def test_credential_route_with_typo_exporter_kind_stays_parented():
+    cache = _cache(
+        "arize",
+        exporters=[ExporterSpec(kind="in_memory"), ExporterSpec(kind="otlp", owner="arize")],
+    )
+    default = NoOpTracer()
+    tracer, detached = cache.tracer_for(default, {"arize_space_id": "S", "arize_api_key": "K"})
+    assert tracer is default
+    assert detached is False
+    assert cache._providers == {}
