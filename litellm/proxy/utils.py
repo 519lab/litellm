@@ -22,6 +22,7 @@ from typing import (
     Callable,
     ClassVar,
     Dict,
+    Final,
     List,
     Literal,
     Mapping,
@@ -2780,6 +2781,7 @@ class PrismaClient:
     _spend_log_transactions_lock = asyncio.Lock()
     tool_usage_transactions: List["ToolUsageTransaction"] = []
     _tool_usage_transactions_lock = asyncio.Lock()
+    spend_log_flush_requested: ClassVar[asyncio.Event] = asyncio.Event()
 
     def __init__(
         self,
@@ -5434,6 +5436,19 @@ async def update_spend_logs_job(
         )
 
 
+def request_spend_log_flush() -> None:
+    PrismaClient.spend_log_flush_requested.set()
+
+
+async def _wait_for_spend_log_flush_request(interval: float) -> bool:
+    try:
+        await asyncio.wait_for(PrismaClient.spend_log_flush_requested.wait(), timeout=interval)
+        PrismaClient.spend_log_flush_requested.clear()
+        return True
+    except asyncio.TimeoutError:
+        return False
+
+
 async def _monitor_spend_logs_queue(
     prisma_client: PrismaClient,
     db_writer_client: Optional[AsyncHTTPHandler],
@@ -5496,12 +5511,13 @@ async def _monitor_spend_logs_queue(
                 # Exponential backoff when no logs to process
                 current_interval = min(current_interval * backoff_multiplier, max_backoff)
 
-            await asyncio.sleep(current_interval)
+            if await _wait_for_spend_log_flush_request(current_interval):
+                current_interval = base_interval
         except Exception as e:
             spend_log_error("Error in spend logs queue monitor: %s", str(e), exc=e)
             # Continue monitoring even if there's an error, with exponential backoff
             current_interval = min(current_interval * backoff_multiplier, max_backoff)
-            await asyncio.sleep(current_interval)
+            await _wait_for_spend_log_flush_request(current_interval)
 
 
 MAX_SPEND_LOG_ISOLATION_ATTEMPTS_PER_BATCH = 256

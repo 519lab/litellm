@@ -459,3 +459,56 @@ async def test_get_all_spend_logs_matches_cache_hit_suffixed_request_ids():
     assert "request_id = $1 OR request_id LIKE $2" in sql
     assert exact_id == "resp_123"
     assert pattern == "resp\\_123\\_cache\\_hit%"
+
+
+@pytest.mark.asyncio
+async def test_get_all_spend_logs_retries_until_row_appears():
+    """Regression: write-flush race — first query returns empty; retry must succeed before giving up."""
+    import litellm.proxy.proxy_server as proxy_server
+
+    hit_row = [{"request_id": "resp_abc", "session_id": "s2"}]
+    query_raw = AsyncMock(side_effect=[[], hit_row])
+    prisma = MagicMock()
+    prisma.db.query_raw = query_raw
+    with patch.object(proxy_server, "prisma_client", prisma):
+        with patch("litellm.responses.litellm_completion_transformation.session_handler.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            rows = await ResponsesSessionHandler.get_all_spend_logs_for_previous_response_id("resp_abc")
+
+    assert rows == hit_row
+    assert query_raw.call_count == 2
+    mock_sleep.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_get_all_spend_logs_returns_empty_after_all_attempts_exhausted():
+    """Regression: write-flush race — all attempts return empty; must return [] not raise."""
+    import litellm.proxy.proxy_server as proxy_server
+
+    query_raw = AsyncMock(return_value=[])
+    prisma = MagicMock()
+    prisma.db.query_raw = query_raw
+    with patch.object(proxy_server, "prisma_client", prisma):
+        with patch("litellm.responses.litellm_completion_transformation.session_handler.asyncio.sleep", new_callable=AsyncMock):
+            rows = await ResponsesSessionHandler.get_all_spend_logs_for_previous_response_id("resp_xyz")
+
+    assert rows == []
+    from litellm.constants import RESPONSES_SESSION_LOOKUP_MAX_ATTEMPTS
+    assert query_raw.call_count == RESPONSES_SESSION_LOOKUP_MAX_ATTEMPTS
+
+
+@pytest.mark.asyncio
+async def test_get_all_spend_logs_does_not_sleep_on_first_hit():
+    """First attempt success: no sleep should be called."""
+    import litellm.proxy.proxy_server as proxy_server
+
+    hit_row = [{"request_id": "resp_fast", "session_id": "s3"}]
+    query_raw = AsyncMock(return_value=hit_row)
+    prisma = MagicMock()
+    prisma.db.query_raw = query_raw
+    with patch.object(proxy_server, "prisma_client", prisma):
+        with patch("litellm.responses.litellm_completion_transformation.session_handler.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            rows = await ResponsesSessionHandler.get_all_spend_logs_for_previous_response_id("resp_fast")
+
+    assert rows == hit_row
+    assert query_raw.call_count == 1
+    mock_sleep.assert_not_awaited()

@@ -2236,3 +2236,41 @@ async def test_daily_transaction_compression_saved_tokens_zero_when_absent():
     assert transaction["compression_saved_tokens"] == 0
     assert transaction["compression_savings_spend"] == 0
     assert transaction["prompt_caching_savings_spend"] == 0
+
+
+@pytest.mark.asyncio
+async def test_insert_spend_log_triggers_flush_for_responses_call_type():
+    """Regression: write-flush race — inserting a responses spend log must signal the queue monitor."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from litellm.proxy.db.db_spend_update_writer import DBSpendUpdateWriter
+
+    mock_prisma = MagicMock()
+    mock_prisma._spend_log_transactions_lock = asyncio.Lock()
+    mock_prisma.spend_log_transactions = []
+
+    writer = DBSpendUpdateWriter()
+    payload: dict = {"request_id": "resp_flush_test", "call_type": "responses", "spend": 0.01}
+
+    with patch("litellm.proxy.utils.request_spend_log_flush") as mock_flush:
+        await writer._insert_spend_log_to_db(payload=payload, prisma_client=mock_prisma)
+
+    mock_flush.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_insert_spend_log_no_flush_for_non_responses_call_type():
+    """Non-responses call types must not trigger the early flush."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from litellm.proxy.db.db_spend_update_writer import DBSpendUpdateWriter
+
+    mock_prisma = MagicMock()
+    mock_prisma._spend_log_transactions_lock = asyncio.Lock()
+    mock_prisma.spend_log_transactions = []
+
+    writer = DBSpendUpdateWriter()
+    payload: dict = {"request_id": "chat_flush_test", "call_type": "acompletion", "spend": 0.01}
+
+    with patch("litellm.proxy.utils.request_spend_log_flush") as mock_flush:
+        await writer._insert_spend_log_to_db(payload=payload, prisma_client=mock_prisma)
+
+    mock_flush.assert_not_called()

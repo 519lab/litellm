@@ -17,6 +17,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Dict,
+    Final,
     List,
     Literal,
     Optional,
@@ -32,6 +33,9 @@ from litellm.constants import (
     DB_SPEND_UPDATE_JOB_NAME,
     DB_DAILY_TAG_SPEND_UPDATE_JOB_NAME,
 )
+from litellm.types.utils import CallTypes
+
+RESPONSES_SESSION_CALL_TYPES: Final = frozenset({CallTypes.responses.value, CallTypes.aresponses.value})
 from litellm.litellm_core_utils.safe_json_loads import safe_json_loads
 from litellm.proxy._types import (
     DB_RETRY_SAFE_ERROR_TYPES,
@@ -756,6 +760,12 @@ class DBSpendUpdateWriter:
                 prisma_client.spend_log_transactions.append(payload)
         else:
             verbose_proxy_logger.debug("prisma_client is None. Skipping writing spend logs to db.")
+            return prisma_client
+
+        if payload.get("call_type") in RESPONSES_SESSION_CALL_TYPES:
+            from litellm.proxy.utils import request_spend_log_flush
+
+            request_spend_log_flush()
 
         return prisma_client
 

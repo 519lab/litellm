@@ -1,3 +1,4 @@
+import asyncio
 import json
 from typing import TYPE_CHECKING, Any, List, Optional, Union, cast
 
@@ -285,14 +286,24 @@ class ResponsesSessionHandler:
             ORDER BY "endTime" ASC;
         """
 
-        spend_logs = await prisma_client.db.query_raw(
-            query, previous_response_id, cache_hit_request_id_pattern(previous_response_id)
+        from litellm.constants import (
+            RESPONSES_SESSION_LOOKUP_MAX_ATTEMPTS,
+            RESPONSES_SESSION_LOOKUP_RETRY_INTERVAL,
         )
 
-        verbose_proxy_logger.debug(
-            "Found the following spend logs for previous response id %s: %s",
-            previous_response_id,
-            json.dumps(spend_logs, indent=4, default=str),
-        )
+        for attempt in range(RESPONSES_SESSION_LOOKUP_MAX_ATTEMPTS):
+            if attempt:
+                await asyncio.sleep(RESPONSES_SESSION_LOOKUP_RETRY_INTERVAL)
+            spend_logs = await prisma_client.db.query_raw(
+                query, previous_response_id, cache_hit_request_id_pattern(previous_response_id)
+            )
+            if spend_logs:
+                verbose_proxy_logger.debug(
+                    "Found the following spend logs for previous response id %s: %s",
+                    previous_response_id,
+                    json.dumps(spend_logs, indent=4, default=str),
+                )
+                return spend_logs
 
-        return spend_logs
+        verbose_proxy_logger.debug("Found no spend logs for previous response id %s", previous_response_id)
+        return []
