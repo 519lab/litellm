@@ -7131,7 +7131,7 @@ async def test_reset_key_spend_success(monkeypatch):
         assert response["max_budget"] == 200.0
         mock_prisma_client.db.litellm_verificationtoken.update.assert_called_once()
         mock_delete_cache.assert_awaited_once()
-        mock_spend_counter_cache.in_memory_cache.set_cache.assert_called_once_with(
+        mock_spend_counter_cache.in_memory_cache.set_cache.assert_any_call(
             key=f"spend:key:{hashed_key}", value=50.0, ttl=60
         )
 
@@ -14994,3 +14994,202 @@ async def test_list_keys_without_expires_param_forwards_none():
 
     mock_helper.assert_called_once()
     assert mock_helper.call_args.kwargs["expires_filter"] is None
+
+
+@pytest.mark.asyncio
+async def test_reset_key_spend_advances_budget_reset_at(monkeypatch):
+    """Spend reset must advance budget_reset_at so the next request is not immediately re-blocked."""
+    from datetime import timezone
+
+    from litellm.proxy.management_endpoints.key_management_endpoints import (
+        _advance_one_key_budget_window,
+        _budget_limit_windows,
+        _set_spend_counter_with_floor_and_broadcast,
+    )
+
+    mock_prisma_client = MagicMock()
+    mock_user_api_key_cache = MagicMock()
+    mock_proxy_logging_obj = MagicMock()
+
+    hashed_key = "hashed-budget-duration-key"
+    import datetime as _dt
+    stale_reset_at = _dt.datetime(2020, 1, 1, tzinfo=timezone.utc)
+    key_in_db = LiteLLM_VerificationToken(
+        token=hashed_key,
+        user_id="test-user",
+        spend=100.0,
+        max_budget=200.0,
+        budget_duration="30d",
+        budget_reset_at=stale_reset_at,
+        litellm_budget_table=None,
+    )
+
+    updated_key = LiteLLM_VerificationToken(
+        token=hashed_key,
+        user_id="test-user",
+        spend=0.0,
+        max_budget=200.0,
+        budget_reset_at=_dt.datetime(2026, 9, 30, tzinfo=timezone.utc),
+    )
+
+    mock_prisma_client.db.litellm_verificationtoken.find_unique = AsyncMock(return_value=key_in_db)
+    mock_prisma_client.db.litellm_verificationtoken.update = AsyncMock(return_value=updated_key)
+
+    monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
+    monkeypatch.setattr("litellm.proxy.proxy_server.user_api_key_cache", mock_user_api_key_cache)
+    monkeypatch.setattr("litellm.proxy.proxy_server.proxy_logging_obj", mock_proxy_logging_obj)
+
+    mock_spend_counter_cache = MagicMock()
+    mock_spend_counter_cache.redis_cache = None
+    monkeypatch.setattr("litellm.proxy.proxy_server.spend_counter_cache", mock_spend_counter_cache)
+
+    with (
+        patch("litellm.proxy.proxy_server.hash_token", return_value=hashed_key),
+        patch(
+            "litellm.proxy.management_endpoints.key_management_endpoints._check_proxy_or_team_admin_for_key",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "litellm.proxy.management_endpoints.key_management_endpoints._delete_cache_key_object",
+            new_callable=AsyncMock,
+        ),
+    ):
+        user_api_key_dict = UserAPIKeyAuth(
+            user_role=LitellmUserRoles.PROXY_ADMIN,
+            api_key="sk-admin",
+            user_id="admin-user",
+        )
+        await reset_key_spend_fn(
+            key="sk-test-key",
+            data=ResetSpendRequest(reset_to=0.0),
+            user_api_key_dict=user_api_key_dict,
+            litellm_changed_by=None,
+        )
+
+    update_call = mock_prisma_client.db.litellm_verificationtoken.update.call_args
+    assert update_call is not None
+    update_data = update_call.kwargs.get("data") or update_call.args[0] if not update_call.kwargs.get("data") else update_call.kwargs["data"]
+    assert "budget_reset_at" in update_data, "budget_reset_at must be included in the DB update when budget_duration is set"
+    advanced = update_data["budget_reset_at"]
+    assert advanced > stale_reset_at, "new budget_reset_at must be in the future, not leave the stale past value"
+
+
+@pytest.mark.asyncio
+async def test_reset_key_spend_no_budget_duration_skips_reset_at(monkeypatch):
+    """Keys without budget_duration must not have budget_reset_at injected into the DB update."""
+    mock_prisma_client = MagicMock()
+    mock_user_api_key_cache = MagicMock()
+    mock_proxy_logging_obj = MagicMock()
+
+    hashed_key = "hashed-no-duration-key"
+    key_in_db = LiteLLM_VerificationToken(
+        token=hashed_key,
+        user_id="test-user",
+        spend=50.0,
+        max_budget=None,
+        litellm_budget_table=None,
+    )
+    updated_key = LiteLLM_VerificationToken(
+        token=hashed_key,
+        user_id="test-user",
+        spend=0.0,
+        max_budget=None,
+        budget_reset_at=None,
+    )
+
+    mock_prisma_client.db.litellm_verificationtoken.find_unique = AsyncMock(return_value=key_in_db)
+    mock_prisma_client.db.litellm_verificationtoken.update = AsyncMock(return_value=updated_key)
+
+    monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
+    monkeypatch.setattr("litellm.proxy.proxy_server.user_api_key_cache", mock_user_api_key_cache)
+    monkeypatch.setattr("litellm.proxy.proxy_server.proxy_logging_obj", mock_proxy_logging_obj)
+
+    mock_spend_counter_cache = MagicMock()
+    mock_spend_counter_cache.redis_cache = None
+    monkeypatch.setattr("litellm.proxy.proxy_server.spend_counter_cache", mock_spend_counter_cache)
+
+    with (
+        patch("litellm.proxy.proxy_server.hash_token", return_value=hashed_key),
+        patch(
+            "litellm.proxy.management_endpoints.key_management_endpoints._check_proxy_or_team_admin_for_key",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "litellm.proxy.management_endpoints.key_management_endpoints._delete_cache_key_object",
+            new_callable=AsyncMock,
+        ),
+    ):
+        user_api_key_dict = UserAPIKeyAuth(
+            user_role=LitellmUserRoles.PROXY_ADMIN,
+            api_key="sk-admin",
+            user_id="admin-user",
+        )
+        await reset_key_spend_fn(
+            key="sk-test-key",
+            data=ResetSpendRequest(reset_to=0.0),
+            user_api_key_dict=user_api_key_dict,
+            litellm_changed_by=None,
+        )
+
+    update_call = mock_prisma_client.db.litellm_verificationtoken.update.call_args
+    update_data = update_call.kwargs.get("data", {})
+    assert "budget_reset_at" not in update_data, "budget_reset_at must NOT be added when budget_duration is absent"
+
+
+def test_budget_limit_windows_empty():
+    from litellm.proxy.management_endpoints.key_management_endpoints import _budget_limit_windows
+
+    assert _budget_limit_windows(None) == ()
+    assert _budget_limit_windows([]) == ()
+    assert _budget_limit_windows("[]") == ()
+
+
+def test_budget_limit_windows_parses_string():
+    from litellm.proxy.management_endpoints.key_management_endpoints import _budget_limit_windows
+
+    raw = json.dumps([{"budget_duration": "1d", "max_budget": 10.0}])
+    windows = _budget_limit_windows(raw)
+    assert len(windows) == 1
+    assert windows[0]["budget_duration"] == "1d"
+
+
+def test_advance_one_key_budget_window_no_duration():
+    from litellm.proxy.management_endpoints.key_management_endpoints import _advance_one_key_budget_window
+
+    window: dict[str, object] = {"max_budget": 5.0}
+    result = _advance_one_key_budget_window(window)
+    assert result is window
+
+
+def test_advance_one_key_budget_window_advances_reset_at():
+    import datetime as _dt
+    from litellm.proxy.management_endpoints.key_management_endpoints import _advance_one_key_budget_window
+
+    before = _dt.datetime.now(_dt.timezone.utc)
+    window: dict[str, object] = {"budget_duration": "1d", "max_budget": 5.0}
+    result = _advance_one_key_budget_window(window)
+    assert "reset_at" in result
+    new_reset = _dt.datetime.fromisoformat(str(result["reset_at"]))
+    after = _dt.datetime.now(_dt.timezone.utc)
+    assert new_reset > before
+    assert new_reset <= after + _dt.timedelta(days=1, seconds=1)
+
+
+@pytest.mark.asyncio
+async def test_set_spend_counter_sets_floor_marker(monkeypatch):
+    """_set_spend_counter_with_floor_and_broadcast must write the spend_db_floor: marker."""
+    from litellm.proxy.management_endpoints.key_management_endpoints import (
+        _set_spend_counter_with_floor_and_broadcast,
+    )
+
+    mock_cache = MagicMock()
+    mock_cache.redis_cache = None
+    monkeypatch.setattr("litellm.proxy.proxy_server.spend_counter_cache", mock_cache)
+    monkeypatch.setattr("litellm.proxy.proxy_server.SPEND_DB_FLOOR_CACHE_TTL_SECONDS", 5)
+
+    await _set_spend_counter_with_floor_and_broadcast(counter_key="spend:key:abc", value=7.5)
+
+    calls = mock_cache.in_memory_cache.set_cache.call_args_list
+    keys_written = {c.kwargs.get("key") or c.args[0] for c in calls}
+    assert "spend:key:abc" in keys_written
+    assert "spend_db_floor:spend:key:abc" in keys_written

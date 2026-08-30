@@ -18,9 +18,9 @@ import os
 import re
 import secrets
 import traceback
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, cast
+from typing import Any, Callable, Dict, Final, List, Literal, Optional, Tuple, cast
 
 import fastapi
 import yaml
@@ -4879,6 +4879,58 @@ def _validate_reset_spend_value(reset_to: Any, key_in_db: LiteLLM_VerificationTo
     return reset_to
 
 
+async def _set_spend_counter_with_floor_and_broadcast(counter_key: str, value: float) -> None:
+    from litellm.proxy.proxy_server import SPEND_DB_FLOOR_CACHE_TTL_SECONDS, spend_counter_cache
+
+    spend_counter_cache.in_memory_cache.set_cache(key=counter_key, value=value, ttl=60)
+    if spend_counter_cache.redis_cache is not None:
+        try:
+            await spend_counter_cache.redis_cache.async_set_cache(key=counter_key, value=value, ttl=60)
+        except Exception as redis_err:
+            verbose_proxy_logger.warning(
+                "Failed to update spend counter %s in Redis: %s.",
+                counter_key,
+                redis_err,
+            )
+    floor_key: Final = f"spend_db_floor:{counter_key}"
+    spend_counter_cache.in_memory_cache.set_cache(key=floor_key, value=value, ttl=SPEND_DB_FLOOR_CACHE_TTL_SECONDS)
+
+
+def _budget_limit_windows(budget_limits: Sequence[object] | str | None) -> tuple[Mapping[str, object], ...]:
+    if not budget_limits:
+        return ()
+    raw_windows: Final = json.loads(budget_limits) if isinstance(budget_limits, str) else budget_limits
+    return tuple(w if isinstance(w, dict) else w.model_dump() for w in raw_windows)  # pyright: ignore[reportAttributeAccessIssue]  # object known to have model_dump at runtime
+
+
+def _advance_one_key_budget_window(window: Mapping[str, object]) -> Mapping[str, object]:
+    duration = window.get("budget_duration")
+    if not isinstance(duration, str) or not duration:
+        return window
+    new_reset_at: Final = datetime.now(timezone.utc) + timedelta(seconds=duration_in_seconds(duration))
+    return {**window, "reset_at": new_reset_at.isoformat()}
+
+
+async def _reset_key_budget_windows(
+    prisma_client: PrismaClient,
+    hashed_api_key: str,
+    budget_limits: Sequence[object] | str | None,
+) -> None:
+    windows: Final = _budget_limit_windows(budget_limits)
+    if not windows:
+        return
+    reset_windows: Final = tuple(_advance_one_key_budget_window(w) for w in windows)
+    await VerificationTokenRepository(prisma_client).table.update(
+        where={"token": hashed_api_key},
+        data={"budget_limits": json.dumps(reset_windows, default=str)},  # pyright: ignore[reportArgumentType]  # prisma stubs lag dict shape
+    )
+    for window in reset_windows:
+        duration = window.get("budget_duration")
+        if isinstance(duration, str) and duration:
+            counter_key = f"spend:key:{hashed_api_key}:window:{duration}"
+            await _set_spend_counter_with_floor_and_broadcast(counter_key=counter_key, value=0.0)
+
+
 @router.post(
     "/key/{key:path}/reset_spend",
     tags=["key management"],
@@ -4933,9 +4985,15 @@ async def reset_key_spend_fn(
             user_api_key_cache=user_api_key_cache,
         )
 
+        budget_duration = _key_in_db.budget_duration
+        new_budget_reset_at = get_budget_reset_time(budget_duration=budget_duration) if budget_duration else None
+        db_update: dict[str, object] = {"spend": reset_to}
+        if new_budget_reset_at is not None:
+            db_update["budget_reset_at"] = new_budget_reset_at
+
         updated_key = await VerificationTokenRepository(prisma_client).table.update(
             where={"token": hashed_api_key},
-            data={"spend": reset_to},
+            data=db_update,  # pyright: ignore[reportArgumentType]  # prisma stubs lag dict shape
         )
 
         if updated_key is None:
@@ -4944,29 +5002,20 @@ async def reset_key_spend_fn(
                 detail={"error": "Failed to update key spend"},
             )
 
+        _counter_key = f"spend:key:{hashed_api_key}"
+        await _set_spend_counter_with_floor_and_broadcast(counter_key=_counter_key, value=reset_to)
+
+        await _reset_key_budget_windows(
+            prisma_client=prisma_client,
+            hashed_api_key=hashed_api_key,
+            budget_limits=getattr(_key_in_db, "budget_limits", None),
+        )
+
         await _delete_cache_key_object(
             hashed_token=hashed_api_key,
             user_api_key_cache=user_api_key_cache,
             proxy_logging_obj=proxy_logging_obj,
         )
-
-        # Set Redis spend counter to the new value so get_current_spend()
-        # returns the correct amount immediately instead of the stale pre-reset value.
-        # We use reset_to (not 0.0) so partial resets are reflected correctly.
-        from litellm.proxy.proxy_server import spend_counter_cache
-
-        _counter_key = f"spend:key:{hashed_api_key}"
-        spend_counter_cache.in_memory_cache.set_cache(key=_counter_key, value=reset_to, ttl=60)
-        if spend_counter_cache.redis_cache is not None:
-            try:
-                await spend_counter_cache.redis_cache.async_set_cache(key=_counter_key, value=reset_to, ttl=60)
-            except Exception as redis_err:
-                verbose_proxy_logger.warning(
-                    "Failed to update spend counter %s in Redis: %s. "
-                    "Budget checks may use stale value until counter expires.",
-                    _counter_key,
-                    redis_err,
-                )
 
         max_budget = updated_key.max_budget
         budget_reset_at = updated_key.budget_reset_at
