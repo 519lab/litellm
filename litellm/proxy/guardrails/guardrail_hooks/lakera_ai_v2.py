@@ -200,6 +200,41 @@ class LakeraAIGuardrail(CustomGuardrail):
             msg["content"] = content
         return messages
 
+    def _build_lakera_inspection_messages(self, data: Dict) -> List[AllMessageValues]:
+        """Like build_inspection_messages, but also prepends the Responses-API
+        ``instructions`` field as a synthetic system message so Lakera can
+        inspect it for PII. The instructions message is always at index 0 when
+        present, which _mask_unwritable_instructions_pii_in_place relies on."""
+        messages: List[AllMessageValues] = []
+        instructions = data.get("instructions")
+        if isinstance(instructions, str) and instructions:
+            messages.append({"role": "system", "content": instructions})  # pyright: ignore[reportArgumentType]  # dict literal satisfies AllMessageValues at runtime
+        messages.extend(build_inspection_messages(data))  # pyright: ignore[reportArgumentType]  # Dict[str, str] satisfies AllMessageValues at runtime
+        return messages
+
+    def _mask_unwritable_instructions_pii_in_place(
+        self,
+        data: Dict,  # mutable-ok: writes the redacted result back into the caller's request dict in place
+        inspected_messages: List[AllMessageValues],
+        lakera_response: Optional[LakeraAIResponse],
+        masked_entity_count: Dict,
+    ) -> bool:
+        """Mask a Responses-API body where the only un-written field is ``instructions``.
+        Writes the redacted instructions back to ``data["instructions"]`` directly because
+        apply_redacted_messages_back has no path for that field and would fold the
+        instructions text into ``data["input"]``. Returns False when there is no
+        instructions field to write back to."""
+        if not isinstance(data.get("instructions"), str):
+            return False
+        redacted = self._mask_pii_in_messages(
+            messages=inspected_messages,
+            lakera_response=lakera_response,
+            masked_entity_count=masked_entity_count,
+        )
+        data["instructions"] = redacted[0]["content"]
+        apply_redacted_messages_back(data, list(redacted[1:]))  # pyright: ignore[reportArgumentType]  # List[AllMessageValues] satisfies param type at runtime
+        return True
+
     async def async_pre_call_hook(
         self,
         user_api_key_dict: UserAPIKeyAuth,
@@ -218,8 +253,8 @@ class LakeraAIGuardrail(CustomGuardrail):
             verbose_proxy_logger.debug("Lakera AI: not running guardrail. Guardrail is disabled.")
             return data
 
-        # Covers multimodal list content + Responses-API input.
-        new_messages = build_inspection_messages(data)
+        # Covers multimodal list content + Responses-API input + instructions.
+        new_messages = self._build_lakera_inspection_messages(data)
         if not new_messages:
             verbose_proxy_logger.warning("Lakera AI: not running guardrail. No inspectable text in data")
             return data
@@ -244,30 +279,51 @@ class LakeraAIGuardrail(CustomGuardrail):
         ########## 2. Handle flagged content ##########
         #########################################################
         if lakera_guardrail_response.get("flagged") is True:
-            # If only PII violations exist, mask the PII (string input only).
-            if self._is_only_pii_violation(lakera_guardrail_response) and not is_multimodal_input:
-                redacted_messages = self._mask_pii_in_messages(
-                    messages=new_messages,  # type: ignore[arg-type]
+            is_pii_only_violation = self._is_only_pii_violation(lakera_guardrail_response)
+            # PII-only violations get masked in place regardless of on_flagged: there's
+            # no reason to expose raw PII to satisfy an advisory note, and masking is
+            # strictly safer than either blocking or appending an advisory message next
+            # to unredacted PII.
+            if is_pii_only_violation and not is_multimodal_input:
+                masked_in_place = self._mask_unwritable_instructions_pii_in_place(
+                    data=data,
+                    inspected_messages=new_messages,
                     lakera_response=lakera_guardrail_response,
                     masked_entity_count=masked_entity_count,
                 )
-                # Write back to ``messages`` AND ``input``. The Responses-API
-                # backend reads ``input``; writing only to ``messages``
-                # would let unredacted PII reach the LLM for /v1/responses.
-                apply_redacted_messages_back(data, list(redacted_messages))  # type: ignore[arg-type]
+                if not masked_in_place:
+                    redacted_messages = self._mask_pii_in_messages(
+                        messages=new_messages,  # type: ignore[arg-type]
+                        lakera_response=lakera_guardrail_response,
+                        masked_entity_count=masked_entity_count,
+                    )
+                    # Write back to ``messages`` AND ``input``. The Responses-API
+                    # backend reads ``input``; writing only to ``messages``
+                    # would let unredacted PII reach the LLM for /v1/responses.
+                    apply_redacted_messages_back(data, list(redacted_messages))  # type: ignore[arg-type]
                 verbose_proxy_logger.debug("Lakera AI: Masked PII in messages instead of blocking request")
-            else:
-                # Check on_flagged setting
-                if self.on_flagged == "monitor":
+            elif self.on_flagged == "monitor":
+                # Monitor means "don't block", not "don't redact": attempt
+                # instructions-field masking for PII-only violations even in monitor mode.
+                masked_in_place = is_pii_only_violation and self._mask_unwritable_instructions_pii_in_place(
+                    data=data,
+                    inspected_messages=new_messages,
+                    lakera_response=lakera_guardrail_response,
+                    masked_entity_count=masked_entity_count,
+                )
+                if masked_in_place:
+                    verbose_proxy_logger.warning(
+                        "Lakera Guardrail: Monitoring mode - PII detected, masked in place and allowing request"
+                    )
+                else:
                     verbose_proxy_logger.warning(
                         "Lakera Guardrail: Monitoring mode - violation detected but allowing request"
                     )
-                    # Log violation but continue
-                elif self.on_flagged == "block":
-                    # Either non-PII violations, or PII on multimodal input
-                    # (which cannot be masked in place without dropping
-                    # image/audio parts) — raise the standard block error.
-                    raise self._get_http_exception_for_blocked_guardrail(lakera_guardrail_response)
+            elif self.on_flagged == "block":
+                # Either non-PII violations, or PII on multimodal input
+                # (which cannot be masked in place without dropping
+                # image/audio parts) — raise the standard block error.
+                raise self._get_http_exception_for_blocked_guardrail(lakera_guardrail_response)
 
         #########################################################
         ########## 3. Add the guardrail to the applied guardrails header ##########
