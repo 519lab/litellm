@@ -24,7 +24,7 @@ import litellm
 from litellm.litellm_core_utils.litellm_logging import Logging as LiteLLMLoggingObj
 from litellm.llms.anthropic.common_utils import (
     sanitize_tool_use_ids_in_anthropic_messages,
-    strip_empty_text_blocks_from_anthropic_messages,
+    strip_empty_content_blocks_from_anthropic_messages,
 )
 from litellm.llms.base_llm.anthropic_messages.transformation import (
     BaseAnthropicMessagesConfig,
@@ -228,7 +228,7 @@ async def anthropic_messages(
     # causes the next /v1/messages call to 400.  /v1/chat/completions
     # already handles this in anthropic_messages_pt; sanitize the native
     # Anthropic Messages path here for the same guarantee.  See #22930.
-    messages = strip_empty_text_blocks_from_anthropic_messages(messages)
+    messages = strip_empty_content_blocks_from_anthropic_messages(messages)
     # Replay of cross-provider tool history (e.g. kimi -> Anthropic) may carry
     # ids like ``functions.Bash:0`` that violate Anthropic's id pattern.
     messages = sanitize_tool_use_ids_in_anthropic_messages(messages)
@@ -421,7 +421,7 @@ def anthropic_messages_handler(
     # ``_litellm_messages_presanitized`` to skip this redundant second
     # full-messages scan. Pop it so it never leaks into provider params.
     if not kwargs.pop("_litellm_messages_presanitized", False):
-        messages = strip_empty_text_blocks_from_anthropic_messages(messages)
+        messages = strip_empty_content_blocks_from_anthropic_messages(messages)
         messages = sanitize_tool_use_ids_in_anthropic_messages(messages)
 
     from litellm.integrations.anthropic_cache_control_hook import (

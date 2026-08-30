@@ -4,7 +4,7 @@ This file contains common utils for anthropic calls.
 
 import copy
 import re
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Final, List, Optional, Union
 
 import httpx
 
@@ -904,19 +904,25 @@ def strip_advisor_blocks_from_messages(messages: List[Any], replace_with_text: b
     return messages
 
 
-def is_anthropic_invalid_thinking_signature_error(error_text: str) -> bool:
+def is_anthropic_invalid_thinking_block_error(error_text: str) -> bool:
     """
-    Detect Anthropic 400 errors caused by missing or invalid thinking signatures.
+    Detect Anthropic 400 errors caused by invalid thinking blocks in replayed
+    history: a missing or invalid signature, or a block with empty thinking text.
 
     Known error formats:
     {"message":"messages.2.content.0.thinking.signature.str: Input should be a valid string"}
     messages.N.content.M.thinking.signature.str: Input should be a valid string
     messages.N.content.M: Invalid `signature` in `thinking` block
+    messages.N.content.M.thinking: each thinking block must contain thinking
     """
     if not error_text:
         return False
-    lower = error_text.lower()
-    return "thinking" in lower and "signature" in lower and ("invalid" in lower or "valid string" in lower)
+    lower: Final = error_text.lower()
+    if "thinking" not in lower:
+        return False
+    if "signature" in lower and ("invalid" in lower or "valid string" in lower):
+        return True
+    return "must contain thinking" in lower
 
 
 def strip_thinking_blocks_from_anthropic_messages(messages: List[Any]) -> List[Any]:
@@ -958,22 +964,25 @@ def strip_thinking_blocks_from_anthropic_messages_request_dict(
     data.pop("thinking", None)
 
 
-def strip_empty_text_blocks_from_anthropic_messages(
+def strip_empty_content_blocks_from_anthropic_messages(
     messages: List[Any],
 ) -> List[Any]:
     """
     Return a new message list with empty or whitespace-only ``{"type": "text"}``
-    content blocks removed.
+    and ``{"type": "thinking"}`` content blocks removed.
 
     Anthropic's API rejects requests containing such blocks with
-    ``"messages: text content blocks must be non-empty"``, but assistant
-    messages from Anthropic routinely arrive with ``{"type": "text", "text": ""}``
-    alongside ``tool_use`` blocks (see anthropics/anthropic-sdk-python#461).
-    Multi-turn tool-use clients (e.g. Claude Code) loop these prior responses
-    back as conversation history, which then causes the next request to 400
-    on the unified ``/v1/messages`` path.  ``/v1/chat/completions`` already
-    handles this in ``anthropic_messages_pt``; this helper provides the
-    equivalent guarantee for the native Anthropic Messages path.
+    ``"messages: text content blocks must be non-empty"`` and
+    ``"messages.N.content.M.thinking: each thinking block must contain thinking"``
+    respectively. Assistant messages routinely arrive with ``{"type": "text", "text": ""}``
+    alongside ``tool_use`` blocks (see anthropics/anthropic-sdk-python#461), and a turn
+    served by a non-Anthropic reasoning model through the /v1/messages bridge can carry
+    ``{"type": "thinking", "thinking": ""}`` when the model produced no reasoning text.
+    Multi-turn tool-use clients (e.g. Claude Code) loop these prior responses back as
+    conversation history, which then causes the next request to 400 on the unified
+    ``/v1/messages`` path. ``/v1/chat/completions`` already handles this in
+    ``anthropic_messages_pt``; this helper provides the equivalent guarantee for the
+    native Anthropic Messages path. ``redacted_thinking`` blocks are never touched.
 
     Messages whose content is a list and becomes empty after stripping are
     omitted, matching :func:`strip_thinking_blocks_from_anthropic_messages`.
@@ -986,7 +995,7 @@ def strip_empty_text_blocks_from_anthropic_messages(
             out.append(m)
             continue
         content = m["content"]
-        filtered = [b for b in content if not _is_empty_text_block(b)]
+        filtered = [b for b in content if not _is_empty_text_block(b) and not is_empty_thinking_block(b)]
         if len(filtered) == len(content):
             out.append(m)
         elif filtered:

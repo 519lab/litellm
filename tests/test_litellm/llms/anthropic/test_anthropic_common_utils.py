@@ -1249,9 +1249,9 @@ class TestPassthroughAuthToken:
 class TestAnthropicThinkingSignatureSelfHeal:
     """Helpers for retrying after invalid encrypted thinking signatures."""
 
-    def test_is_anthropic_invalid_thinking_signature_error_positive(self):
+    def test_is_anthropic_invalid_thinking_block_error_positive(self):
         from litellm.llms.anthropic.common_utils import (
-            is_anthropic_invalid_thinking_signature_error,
+            is_anthropic_invalid_thinking_block_error,
         )
 
         raw = (
@@ -1259,40 +1259,40 @@ class TestAnthropicThinkingSignatureSelfHeal:
             '"message":"messages.3.content.3: Invalid `signature` in `thinking` block"},'
             '"request_id":"req_011Ca2EtQDxp7x6RGUY2jVn9"}'
         )
-        assert is_anthropic_invalid_thinking_signature_error(raw) is True
+        assert is_anthropic_invalid_thinking_block_error(raw) is True
 
-    def test_is_anthropic_invalid_thinking_signature_error_positive_bedrock(self):
+    def test_is_anthropic_invalid_thinking_block_error_positive_bedrock(self):
         from litellm.llms.anthropic.common_utils import (
-            is_anthropic_invalid_thinking_signature_error,
+            is_anthropic_invalid_thinking_block_error,
         )
 
         # Real user-reported Bedrock scenario
         raw = '{"message":"messages.2.content.0.thinking.signature.str: Input should be a valid string"}'
-        assert is_anthropic_invalid_thinking_signature_error(raw) is True
+        assert is_anthropic_invalid_thinking_block_error(raw) is True
 
-    def test_is_anthropic_invalid_thinking_signature_error_positive_vertex(self):
+    def test_is_anthropic_invalid_thinking_block_error_positive_vertex(self):
         from litellm.llms.anthropic.common_utils import (
-            is_anthropic_invalid_thinking_signature_error,
+            is_anthropic_invalid_thinking_block_error,
         )
 
         raw = "messages.4.content.1.thinking.signature.str: Input should be a valid string"
-        assert is_anthropic_invalid_thinking_signature_error(raw) is True
+        assert is_anthropic_invalid_thinking_block_error(raw) is True
 
-    def test_is_anthropic_invalid_thinking_signature_error_negative(self):
+    def test_is_anthropic_invalid_thinking_block_error_negative(self):
         from litellm.llms.anthropic.common_utils import (
-            is_anthropic_invalid_thinking_signature_error,
+            is_anthropic_invalid_thinking_block_error,
         )
 
-        assert is_anthropic_invalid_thinking_signature_error("") is False
+        assert is_anthropic_invalid_thinking_block_error("") is False
         assert (
-            is_anthropic_invalid_thinking_signature_error("rate limit exceeded")
+            is_anthropic_invalid_thinking_block_error("rate limit exceeded")
             is False
         )
         assert (
-            is_anthropic_invalid_thinking_signature_error("invalid_request_error: model not found")
+            is_anthropic_invalid_thinking_block_error("invalid_request_error: model not found")
             is False
         )
-        assert is_anthropic_invalid_thinking_signature_error("thinking signature is malformed") is False
+        assert is_anthropic_invalid_thinking_block_error("thinking signature is malformed") is False
 
     def test_strip_thinking_blocks_from_anthropic_messages(self):
         from litellm.llms.anthropic.common_utils import (
@@ -1366,7 +1366,7 @@ class TestAnthropicThinkingSignatureSelfHeal:
         is dropped; whitespace-only text counts as empty; the caller's list
         is never mutated."""
         from litellm.llms.anthropic.common_utils import (
-            strip_empty_text_blocks_from_anthropic_messages,
+            strip_empty_content_blocks_from_anthropic_messages,
         )
 
         tu = {"type": "tool_use", "id": "x", "name": "Bash", "input": {}}
@@ -1375,14 +1375,14 @@ class TestAnthropicThinkingSignatureSelfHeal:
             {"role": "assistant", "content": [{"type": "text", "text": "  \n "}, tu]},
             {"role": "assistant", "content": [{"type": "text", "text": ""}]},
         ]
-        out = strip_empty_text_blocks_from_anthropic_messages(msgs)
+        out = strip_empty_content_blocks_from_anthropic_messages(msgs)
         assert len(out) == 2 and out[0] is msgs[0]
         assert [b["type"] for b in out[1]["content"]] == ["tool_use"]
         assert len(msgs[1]["content"]) == 2  # caller's content unchanged
 
     def test_strip_empty_text_blocks_preserves_thinking_blocks(self):
         from litellm.llms.anthropic.common_utils import (
-            strip_empty_text_blocks_from_anthropic_messages,
+            strip_empty_content_blocks_from_anthropic_messages,
         )
 
         msgs = [
@@ -1394,12 +1394,12 @@ class TestAnthropicThinkingSignatureSelfHeal:
                 ],
             }
         ]
-        out = strip_empty_text_blocks_from_anthropic_messages(msgs)
+        out = strip_empty_content_blocks_from_anthropic_messages(msgs)
         assert [b["type"] for b in out[0]["content"]] == ["thinking"]
 
     def test_strip_empty_text_blocks_treats_null_text_as_empty(self):
         from litellm.llms.anthropic.common_utils import (
-            strip_empty_text_blocks_from_anthropic_messages,
+            strip_empty_content_blocks_from_anthropic_messages,
         )
 
         msgs = [
@@ -1411,12 +1411,12 @@ class TestAnthropicThinkingSignatureSelfHeal:
                 ],
             }
         ]
-        out = strip_empty_text_blocks_from_anthropic_messages(msgs)
+        out = strip_empty_content_blocks_from_anthropic_messages(msgs)
         assert [b["type"] for b in out[0]["content"]] == ["tool_result"]
 
     def test_strip_empty_text_blocks_treats_missing_text_key_as_empty(self):
         from litellm.llms.anthropic.common_utils import (
-            strip_empty_text_blocks_from_anthropic_messages,
+            strip_empty_content_blocks_from_anthropic_messages,
         )
 
         msgs = [
@@ -1428,21 +1428,21 @@ class TestAnthropicThinkingSignatureSelfHeal:
                 ],
             }
         ]
-        out = strip_empty_text_blocks_from_anthropic_messages(msgs)
+        out = strip_empty_content_blocks_from_anthropic_messages(msgs)
         assert [b["type"] for b in out[0]["content"]] == ["tool_result"]
 
     def test_strip_empty_text_blocks_leaves_non_empty_text_alone(self):
         from litellm.llms.anthropic.common_utils import (
-            strip_empty_text_blocks_from_anthropic_messages,
+            strip_empty_content_blocks_from_anthropic_messages,
         )
 
         msgs = [{"role": "assistant", "content": [{"type": "text", "text": "hi"}]}]
-        out = strip_empty_text_blocks_from_anthropic_messages(msgs)
+        out = strip_empty_content_blocks_from_anthropic_messages(msgs)
         assert out[0] is msgs[0]  # untouched messages keep identity
 
     def test_strip_empty_text_blocks_treats_non_string_text_value_as_empty(self):
         from litellm.llms.anthropic.common_utils import (
-            strip_empty_text_blocks_from_anthropic_messages,
+            strip_empty_content_blocks_from_anthropic_messages,
         )
 
         msgs = [
@@ -1454,7 +1454,7 @@ class TestAnthropicThinkingSignatureSelfHeal:
                 ],
             }
         ]
-        out = strip_empty_text_blocks_from_anthropic_messages(msgs)
+        out = strip_empty_content_blocks_from_anthropic_messages(msgs)
         assert [b["type"] for b in out[0]["content"]] == ["tool_result"]
 
     def test_sanitize_tool_use_ids_in_anthropic_messages(self):
@@ -1842,3 +1842,56 @@ class TestCapabilityProbeUsesCallerProvider:
             AnthropicModelInfo._is_adaptive_thinking_model("claude-opus-4-8", "anthropic")
             is True
         )
+
+
+class TestStripEmptyThinkingBlocksFromAnthropicMessages:
+    """Regression tests for strip_empty_content_blocks_from_anthropic_messages
+    stripping empty thinking blocks alongside empty text blocks."""
+
+    def test_drops_empty_thinking_block(self):
+        from litellm.llms.anthropic.common_utils import strip_empty_content_blocks_from_anthropic_messages
+
+        messages = [
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "thinking", "thinking": "", "signature": None},
+                    {"type": "text", "text": "hello"},
+                ],
+            }
+        ]
+        result = strip_empty_content_blocks_from_anthropic_messages(messages)
+        assert len(result) == 1
+        assert len(result[0]["content"]) == 1
+        assert result[0]["content"][0]["type"] == "text"
+
+    def test_keeps_non_empty_thinking_block(self):
+        from litellm.llms.anthropic.common_utils import strip_empty_content_blocks_from_anthropic_messages
+
+        messages = [
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "thinking", "thinking": "some plan", "signature": "sig"},
+                    {"type": "text", "text": "hello"},
+                ],
+            }
+        ]
+        result = strip_empty_content_blocks_from_anthropic_messages(messages)
+        assert result == messages
+
+
+class TestIsAnthropicInvalidThinkingBlockError:
+    """Regression: error detection must cover empty thinking block errors too."""
+
+    def test_detects_must_contain_thinking_error(self):
+        from litellm.llms.anthropic.common_utils import is_anthropic_invalid_thinking_block_error
+
+        raw = '{"message":"messages.1.content.0.thinking: each thinking block must contain thinking"}'
+        assert is_anthropic_invalid_thinking_block_error(raw) is True
+
+    def test_still_detects_signature_errors(self):
+        from litellm.llms.anthropic.common_utils import is_anthropic_invalid_thinking_block_error
+
+        raw = '{"message":"messages.3.content.3: Invalid `signature` in `thinking` block"}'
+        assert is_anthropic_invalid_thinking_block_error(raw) is True
