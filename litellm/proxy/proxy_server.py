@@ -15,7 +15,7 @@ import threading
 import time
 import traceback
 import warnings
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta, timezone
 from typing import (
     TYPE_CHECKING,
@@ -23,6 +23,7 @@ from typing import (
     AsyncGenerator,
     Callable,
     Dict,
+    Final,
     List,
     Literal,
     Optional,
@@ -11142,25 +11143,51 @@ async def get_all_team_models(
     return returned_team_models
 
 
+def _resolve_model_grant_to_deployment_ids(
+    models: Sequence[str],
+    llm_router: Router,
+) -> tuple[str, ...]:
+    """
+    Resolve a `models` grant (a user's or a key's) to the deployment ids it can call.
+
+    An empty grant and the 'all-proxy-models' sentinel both mean unrestricted at call
+    time, so both expand to every non-team deployment.  A grant entry naming an access
+    group also grants that group's members, matching the union the call-time check applies.
+    """
+    if not models or SpecialModelNames.all_proxy_models.value in models:
+        return tuple(llm_router.get_model_ids(exclude_team_models=True))
+
+    access_groups: Final = llm_router.get_model_access_groups()
+    granted_names: Final = tuple(name for model in models for name in (model, *access_groups.get(model, ())))
+    return tuple(
+        model_id
+        for name in granted_names
+        for deployment in (llm_router.get_model_list(model_name=name) or ())
+        if (model_id := deployment.get("model_info", {}).get("id", None)) is not None
+    )
+
+
 def get_direct_access_models(
     user_db_object: LiteLLM_UserTable,
     llm_router: Router,
-) -> List[str]:
+    key_models: Sequence[str] = (),
+) -> tuple[str, ...]:
     """
-    Get all models that user has direct access to.
+    Get all models the caller has direct (non-team) access to.
 
-    The 'all-proxy-models' sentinel grants direct access to every non-team
-    deployment, mirroring how get_key_models expands it for the key/team path.
+    Both the user record and the calling key are enforced at call time, so direct access
+    is the intersection of the two grants.  An unrestricted key (empty grant or the
+    'all-proxy-models' sentinel) leaves the user's grant untouched.
     """
-    if SpecialModelNames.all_proxy_models.value in user_db_object.models:
-        return llm_router.get_model_ids(exclude_team_models=True)
+    user_model_ids: Final = _resolve_model_grant_to_deployment_ids(
+        cast(Sequence[str], user_db_object.models),  # cast-ok: user.models is a String[] column
+        llm_router,
+    )
+    if not key_models or SpecialModelNames.all_proxy_models.value in key_models:
+        return user_model_ids
 
-    return [
-        model_id
-        for model in user_db_object.models
-        for deployment in (llm_router.get_model_list(model_name=model) or [])
-        if (model_id := deployment.get("model_info", {}).get("id", None)) is not None
-    ]
+    key_model_ids: Final = frozenset(_resolve_model_grant_to_deployment_ids(key_models, llm_router))
+    return tuple(model_id for model_id in user_model_ids if model_id in key_model_ids)
 
 
 def _filter_models_to_user_accessible(all_models: List[Dict]) -> List[Dict]:
@@ -11184,10 +11211,10 @@ async def _populate_team_access_on_models(
     without filtering the model list.
     """
     user_teams: Optional[Union[List[str], Literal["*"]]] = None
-    direct_access_models: List[str] = []
+    direct_access_models: Sequence[str] = ()
     if user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN:
         user_teams = "*"
-        direct_access_models = llm_router.get_model_ids(exclude_team_models=True)  # has access to all models
+        direct_access_models = tuple(llm_router.get_model_ids(exclude_team_models=True))  # has access to all models
     elif user_api_key_dict.user_id is not None:
         user_db_object = await UserRepository(prisma_client).table.find_unique(
             where={"user_id": user_api_key_dict.user_id}
@@ -11198,6 +11225,7 @@ async def _populate_team_access_on_models(
             direct_access_models = get_direct_access_models(
                 user_db_object=user_object,
                 llm_router=llm_router,
+                key_models=cast(Sequence[str], user_api_key_dict.models),  # cast-ok: key.models is a String[] column
             )
     if user_teams is not None:
         team_models = await get_all_team_models(
@@ -11219,7 +11247,7 @@ async def _populate_team_access_on_models(
                 if can_use_model:
                     _model["model_info"]["access_via_team_ids"] = team_models.get(model_id, [])
 
-    direct_access_model_ids = set(direct_access_models)
+    direct_access_model_ids: Final = frozenset(direct_access_models)
     for _model in all_models:
         model_id = _model.get("model_info", {}).get("id", None)
         if model_id is not None:

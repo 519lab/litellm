@@ -1388,7 +1388,7 @@ def test_get_direct_access_models_expands_all_proxy_models_sentinel():
 
     result = ps.get_direct_access_models(user_db_object=user, llm_router=router)
 
-    assert result == ["global-id-1", "global-id-2"]
+    assert result == ("global-id-1", "global-id-2")
     router.get_model_ids.assert_called_once_with(exclude_team_models=True)
     router.get_model_list.assert_not_called()
 
@@ -1403,7 +1403,7 @@ def test_get_direct_access_models_resolves_explicit_model_names():
 
     result = ps.get_direct_access_models(user_db_object=user, llm_router=router)
 
-    assert result == ["gpt4o-id"]
+    assert result == ("gpt4o-id",)
     router.get_model_ids.assert_not_called()
     router.get_model_list.assert_called_once_with(model_name="gpt-4o")
 
@@ -1450,3 +1450,58 @@ async def test_populate_team_access_grants_all_proxy_models_user_direct_access(
 
     assert [m["model_info"]["id"] for m in visible] == ["global-id-1"]
     assert visible[0]["model_info"]["direct_access"] is True
+
+
+def test_get_direct_access_models_restricted_key_narrows_unrestricted_user():
+    """Regression: a key scoped to one model must clip the listing even when the user
+    record is unrestricted — before the fix the listing returned all non-team deployments."""
+    router = MagicMock()
+    router.get_model_ids.return_value = ["gpt4o-id", "sonnet-id"]
+    router.get_model_access_groups.return_value = {}
+    router.get_model_list.side_effect = lambda model_name: (
+        [{"model_info": {"id": "gpt4o-id"}}] if model_name == "gpt-4o" else []
+    )
+
+    user = LiteLLM_UserTable(user_id="u", models=[], teams=[])
+
+    result = ps.get_direct_access_models(user_db_object=user, llm_router=router, key_models=("gpt-4o",))
+
+    assert result == ("gpt4o-id",)
+
+
+def test_get_direct_access_models_all_proxy_models_key_leaves_user_grant_untouched():
+    """Regression: 'all-proxy-models' on the key means unrestricted — it must not clip
+    the user's grant to the non-team deployment set."""
+    router = MagicMock()
+    router.get_model_ids.return_value = ["global-id"]
+    router.get_model_access_groups.return_value = {}
+    router.get_model_list.side_effect = lambda model_name: (
+        [{"model_info": {"id": "byok-id"}}] if model_name == "byok-model" else []
+    )
+
+    user = LiteLLM_UserTable(user_id="u", models=["byok-model"], teams=[])
+
+    result = ps.get_direct_access_models(
+        user_db_object=user,
+        llm_router=router,
+        key_models=(ps.SpecialModelNames.all_proxy_models.value,),
+    )
+
+    assert result == ("byok-id",)
+
+
+def test_get_direct_access_models_expands_access_group_grant():
+    """Regression: a grant naming an access group must resolve the group's members —
+    before the fix the group name itself was looked up as a model and found nothing."""
+    router = MagicMock()
+    router.get_model_access_groups.return_value = {"beta-models": ["gpt-4o", "sonnet"]}
+    router.get_model_list.side_effect = lambda model_name: {
+        "gpt-4o": [{"model_info": {"id": "gpt4o-id"}}],
+        "sonnet": [{"model_info": {"id": "sonnet-id"}}],
+    }.get(model_name, [])
+
+    user = LiteLLM_UserTable(user_id="u", models=["beta-models"], teams=[])
+
+    result = ps.get_direct_access_models(user_db_object=user, llm_router=router)
+
+    assert result == ("gpt4o-id", "sonnet-id")
