@@ -3204,3 +3204,47 @@ def test_tool_result_with_absent_content_emits_tool_message(tool_result_content)
     assert len(tool_messages) == 1, f"expected 1 tool message, got {len(tool_messages)}"
     assert tool_messages[0]["tool_call_id"] == tool_use_id
     assert tool_messages[0]["content"] == ""
+
+
+def test_translate_openai_content_drops_empty_unsigned_thinking_block():
+    """Regression: empty thinking blocks with no signature were emitted, causing Anthropic 400 when
+    replayed as history ("each thinking block must contain thinking")."""
+    openai_choices = [
+        Choices(
+            message=Message(
+                role="assistant",
+                content=None,
+                thinking_blocks=[
+                    {"type": "thinking", "thinking": "", "signature": None},
+                ],
+            )
+        )
+    ]
+
+    adapter = LiteLLMAnthropicMessagesAdapter()
+    result = adapter._translate_openai_content_to_anthropic(choices=openai_choices)
+
+    assert result == [], f"expected empty content for empty unsigned thinking block; got {result}"
+
+
+def test_translate_openai_content_emits_signature_only_thinking_block():
+    """Regression: signature-only thinking blocks (empty text, non-empty signature) must survive the
+    emit path so the client can replay multi-turn extended-thinking tool calls."""
+    openai_choices = [
+        Choices(
+            message=Message(
+                role="assistant",
+                content=None,
+                thinking_blocks=[
+                    {"type": "thinking", "thinking": "", "signature": "abc123sigdata"},
+                ],
+            )
+        )
+    ]
+
+    adapter = LiteLLMAnthropicMessagesAdapter()
+    result = adapter._translate_openai_content_to_anthropic(choices=openai_choices)
+
+    assert len(result) == 1, f"expected 1 thinking block; got {result}"
+    assert result[0]["type"] == "thinking"
+    assert result[0]["signature"] == "abc123sigdata"

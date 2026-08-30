@@ -1001,6 +1001,29 @@ def _is_empty_text_block(block: Any) -> bool:
     return not isinstance(text, str) or not text.strip()
 
 
+def is_empty_thinking_block(block: object) -> bool:
+    """True for a ``{"type": "thinking"}`` block whose thinking text is missing, not a string,
+    or empty/whitespace-only. Anthropic rejects such blocks regardless of signature."""
+    if not isinstance(block, dict) or block.get("type") != "thinking":
+        return False
+    thinking = block.get("thinking")
+    return not isinstance(thinking, str) or not thinking.strip()
+
+
+def is_empty_unsigned_thinking_block(block: object) -> bool:
+    """True for an empty ``{"type": "thinking"}`` block carrying no signature.
+
+    Emit-side predicate: drop a thinking block only when it holds nothing the client could need.
+    A signature-only block (empty text, non-empty signature) is a real provider response and
+    must be emitted — the client needs the signature to replay reasoning across tool-use turns.
+    Request paths should keep using :func:`is_empty_thinking_block` since Anthropic rejects
+    empty thinking blocks in request history regardless of signature.
+    """
+    if not isinstance(block, dict) or not is_empty_thinking_block(block):
+        return False
+    return not block.get("signature")
+
+
 def normalize_anthropic_tool_use_id(raw_id: str) -> str:
     """
     Normalize a tool_use / tool_result id for Anthropic's ``^[a-zA-Z0-9_-]+$``
