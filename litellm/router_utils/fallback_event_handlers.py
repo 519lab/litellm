@@ -1,5 +1,6 @@
+from collections.abc import Mapping
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Final, List, Optional, Tuple, Union
 
 import litellm
 from litellm._logging import verbose_router_logger
@@ -82,6 +83,30 @@ def get_fallback_model_group(fallbacks: List[Any], model_group: str) -> Tuple[Op
     return fallback_model_group, generic_fallback_idx
 
 
+def _get_fallback_target_model_group(fallback_entry: str | Mapping[str, object]) -> str | None:
+    target = fallback_entry if isinstance(fallback_entry, str) else fallback_entry.get("model")
+    return target if isinstance(target, str) else None
+
+
+async def _is_fallback_target_authorized(
+    litellm_router: LitellmRouter,
+    fallback_entry: str | Mapping[str, object],
+    original_model_group: str,
+    kwargs: Mapping[str, object],
+) -> bool:
+    access_check: Final = litellm_router.fallback_access_check
+    target: Final = _get_fallback_target_model_group(fallback_entry)
+    if access_check is None or target is None or target == original_model_group:
+        return True
+    if await access_check(model=target, request_kwargs=kwargs, llm_router=litellm_router):
+        return True
+    verbose_router_logger.info(
+        "Skipping fallback to model_group = %s: caller is not authorized to call it",
+        mask_sensitive_structure(fallback_entry),
+    )
+    return False
+
+
 async def run_async_fallback(
     *args: Tuple[Any],
     litellm_router: LitellmRouter,
@@ -123,6 +148,8 @@ async def run_async_fallback(
 
     for mg in fallback_model_group:
         if mg == original_model_group:
+            continue
+        if not await _is_fallback_target_authorized(litellm_router, mg, original_model_group, kwargs):
             continue
         try:
             # LOGGING

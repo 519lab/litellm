@@ -4,8 +4,10 @@ litellm.Router Types - includes RouterConfig, UpdateRouterConfig, ModelInfo etc
 
 import datetime
 import enum
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import (
+    TYPE_CHECKING,
     Any,
     Dict,
     Generic,
@@ -17,6 +19,9 @@ from typing import (
     Union,
     get_type_hints,
 )
+
+if TYPE_CHECKING:
+    from litellm.router import Router
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -864,6 +869,17 @@ class PreRoutingStrategy(Protocol):
         input: "str | list[Any] | None" = None,
         specific_deployment: bool | None = False,
     ) -> "PreRoutingHookResponse | None": ...
+
+
+class FallbackAccessCheck(Protocol):
+    """
+    Decides whether the caller behind `request_kwargs` may be served by fallback `model`.
+
+    The router runs it before every cross-model-group fallback attempt and skips targets it
+    rejects, so a fallback can never reach a model the caller could not have requested directly.
+    """
+
+    async def __call__(self, *, model: str, request_kwargs: Mapping[str, object], llm_router: "Router") -> bool: ...
 
 
 class RoutingContext(BaseModel):

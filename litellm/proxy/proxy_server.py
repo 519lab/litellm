@@ -273,6 +273,7 @@ from litellm.proxy.auth.auth_utils import (
 )
 from litellm.proxy.auth.handle_jwt import JWTHandler
 from litellm.proxy.auth.litellm_license import LicenseCheck
+from litellm.proxy.auth.fallback_model_access import router_fallback_access_check
 from litellm.proxy.auth.model_checks import (
     expand_wildcard_deployments_for_model_info,
     get_all_fallbacks,
@@ -4937,6 +4938,7 @@ class ProxyConfig:
                 async_only_mode=True  # only init async clients
             ),
             ignore_invalid_deployments=True,  # don't raise an error if a deployment is invalid
+            fallback_access_check=router_fallback_access_check,
         )  # type: ignore
 
         if redis_usage_cache is not None and router.cache.redis_cache is None:
@@ -5394,6 +5396,7 @@ class ProxyConfig:
                         ),
                         search_tools=search_tools,
                         ignore_invalid_deployments=True,
+                        fallback_access_check=router_fallback_access_check,
                     )
                     verbose_proxy_logger.debug(f"updated llm_router: {llm_router}")
             else:

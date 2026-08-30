@@ -26,6 +26,7 @@ from typing import (
     AsyncGenerator,
     Callable,
     Dict,
+    Final,
     FrozenSet,
     Generator,
     List,
@@ -175,6 +176,7 @@ from litellm.types.router import (
     CustomRoutingStrategyBase,
     Deployment,
     DeploymentTypedDict,
+    FallbackAccessCheck,
     GuardrailTypedDict,
     LiteLLM_Params,
     MockRouterTestingParams,
@@ -352,6 +354,7 @@ class Router:
         health_check_staleness_threshold: Optional[int] = None,
         health_check_ignore_transient_errors: bool = False,
         enable_weighted_failover: bool = False,
+        fallback_access_check: FallbackAccessCheck | None = None,
     ) -> None:
         """
         Initialize the Router class with the given parameters for caching, reliability, and routing strategy.
@@ -547,6 +550,7 @@ class Router:
         self.disable_cooldowns = disable_cooldowns
         self.enable_health_check_routing = enable_health_check_routing
         self.enable_weighted_failover = enable_weighted_failover
+        self.fallback_access_check: Final[FallbackAccessCheck | None] = fallback_access_check
         self.health_check_ignore_transient_errors = health_check_ignore_transient_errors
         _staleness = health_check_staleness_threshold or (
             DEFAULT_HEALTH_CHECK_INTERVAL * DEFAULT_HEALTH_CHECK_STALENESS_MULTIPLIER

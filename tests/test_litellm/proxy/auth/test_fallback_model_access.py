@@ -1,0 +1,84 @@
+"""Regression tests for fallback_model_access.py.
+
+Verifies that router fallback targets are authorized against the calling key
+and that the check fails closed when the access-group lookup errors.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from litellm import Router
+from litellm.proxy._types import UserAPIKeyAuth
+from litellm.proxy.auth.fallback_model_access import (
+    is_model_authorized_for_token,
+    router_fallback_access_check,
+)
+
+
+def _router() -> Router:
+    return Router(
+        model_list=[
+            {
+                "model_name": "open-model",
+                "litellm_params": {"model": "openai/open", "api_key": "k"},
+                "model_info": {"access_groups": ["open-group"]},
+            },
+            {
+                "model_name": "secret-model",
+                "litellm_params": {"model": "openai/secret", "api_key": "k"},
+                "model_info": {"access_groups": ["secret-group"]},
+            },
+        ]
+    )
+
+
+def _key_limited_to(access_group: str) -> UserAPIKeyAuth:
+    return UserAPIKeyAuth(api_key="hashed", models=[access_group])
+
+
+@pytest.mark.asyncio
+async def test_is_model_authorized_for_token_follows_the_key_access_groups():
+    router = _router()
+    token = _key_limited_to("open-group")
+
+    assert await is_model_authorized_for_token(model="open-model", valid_token=token, llm_router=router) is True
+    assert await is_model_authorized_for_token(model="secret-model", valid_token=token, llm_router=router) is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("metadata_field", ["metadata", "litellm_metadata"])
+async def test_router_fallback_access_check_authorizes_the_key_carried_in_request_metadata(metadata_field: str):
+    router = _router()
+    request_kwargs = {metadata_field: {"user_api_key_auth": _key_limited_to("open-group")}}
+
+    assert await router_fallback_access_check(model="open-model", request_kwargs=request_kwargs, llm_router=router)
+    assert not await router_fallback_access_check(
+        model="secret-model", request_kwargs=request_kwargs, llm_router=router
+    )
+
+
+@pytest.mark.asyncio
+async def test_router_fallback_access_check_does_not_restrict_requests_without_a_key():
+    assert await router_fallback_access_check(
+        model="secret-model", request_kwargs={"metadata": {}}, llm_router=_router()
+    )
+
+
+class _RouterWithBrokenAccessGroupLookup(Router):
+    def get_model_access_groups(self, *args, **kwargs):
+        raise RuntimeError("access group store unavailable")
+
+
+@pytest.mark.asyncio
+async def test_is_model_authorized_for_token_fails_closed_when_the_lookup_breaks():
+    """Regression: a non-ProxyException from the auth lookup must be treated as a denial,
+    not allowed to escape and replace the provider's error."""
+    router = _RouterWithBrokenAccessGroupLookup(model_list=_router().model_list)
+
+    assert (
+        await is_model_authorized_for_token(
+            model="open-model", valid_token=_key_limited_to("open-group"), llm_router=router
+        )
+        is False
+    )
