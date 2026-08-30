@@ -582,6 +582,7 @@ class BaseResponsesAPIStreamingIterator:
                 kwargs=request_payload,
                 start_time=self.start_time,
                 end_time=end_time,
+                include_overhead=False,
             )
         except Exception:
             # Non-blocking

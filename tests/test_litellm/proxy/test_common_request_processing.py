@@ -5144,7 +5144,7 @@ class TestProxyExceptionFromHttpException:
         result = proxy_exception_from_http_exception(exc, {})
 
         assert result.message == "key not found"
-        assert result.code == 400
+        assert result.code == "400"
         assert isinstance(result.provider_specific_fields, dict)
 
     def test_string_detail_used_as_message(self):
@@ -5156,7 +5156,7 @@ class TestProxyExceptionFromHttpException:
         result = proxy_exception_from_http_exception(exc, {})
 
         assert result.message == "forbidden"
-        assert result.code == 403
+        assert result.code == "403"
         assert result.provider_specific_fields is None
 
     def test_headers_forwarded(self):
@@ -5170,3 +5170,112 @@ class TestProxyExceptionFromHttpException:
 
         assert result.headers is not None
         assert "x-ratelimit-remaining" in result.headers
+
+
+class TestTimingHeaders:
+    """Regression tests for LIT-5466: timing headers on /v1/messages and /v1/responses."""
+
+    @staticmethod
+    def _timing_logging_obj(timing_metrics):
+        from litellm.litellm_core_utils.litellm_logging import Logging as LiteLLMLoggingObj
+
+        logging_obj = LiteLLMLoggingObj(
+            model="openai/gpt-4o-mini",
+            messages=[{"role": "user", "content": "hi"}],
+            stream=True,
+            call_type="anthropic_messages",
+            start_time=None,
+            litellm_call_id="test-call-id",
+            function_id="test-function-id",
+        )
+        logging_obj.set_response_timing_metrics(timing_metrics)
+        return logging_obj
+
+    @staticmethod
+    def _make_user_api_key_dict():
+        from unittest.mock import MagicMock
+
+        from litellm.proxy._types import UserAPIKeyAuth
+
+        mock = MagicMock(spec=UserAPIKeyAuth)
+        mock.tpm_limit = None
+        mock.rpm_limit = None
+        mock.max_budget = None
+        mock.spend = 0.0
+        mock.allowed_model_region = None
+        return mock
+
+    def test_reads_timing_from_logging_obj_when_response_has_no_hidden_params(self):
+        from litellm.proxy.common_request_processing import ProxyBaseLLMRequestProcessing
+
+        headers = ProxyBaseLLMRequestProcessing.get_custom_headers(
+            user_api_key_dict=self._make_user_api_key_dict(),
+            call_id="test-call-id",
+            hidden_params={},
+            litellm_logging_obj=self._timing_logging_obj(
+                {"_response_ms": 500.0, "litellm_overhead_time_ms": 42.5}
+            ),
+        )
+
+        assert headers["x-litellm-response-duration-ms"] == "500.0"
+        assert headers["x-litellm-overhead-duration-ms"] == "42.5"
+
+    def test_skips_logging_obj_timing_on_the_failure_path(self):
+        from litellm.proxy.common_request_processing import ProxyBaseLLMRequestProcessing
+
+        headers = ProxyBaseLLMRequestProcessing.get_custom_headers(
+            user_api_key_dict=self._make_user_api_key_dict(),
+            call_id="test-call-id",
+            hidden_params={},
+            litellm_logging_obj=self._timing_logging_obj(
+                {"_response_ms": 500.0, "litellm_overhead_time_ms": 42.5}
+            ),
+            read_timing_from_logging_obj=False,
+        )
+
+        assert "x-litellm-response-duration-ms" not in headers
+        assert "x-litellm-overhead-duration-ms" not in headers
+
+    def test_takes_both_timing_values_from_one_source(self):
+        """A response that timed itself but has no overhead does not pick up the logging object's overhead."""
+        from litellm.proxy.common_request_processing import ProxyBaseLLMRequestProcessing
+
+        headers = ProxyBaseLLMRequestProcessing.get_custom_headers(
+            user_api_key_dict=self._make_user_api_key_dict(),
+            call_id="test-call-id",
+            hidden_params={"_response_ms": 300.0},
+            litellm_logging_obj=self._timing_logging_obj(
+                {"_response_ms": 500.0, "litellm_overhead_time_ms": 42.5}
+            ),
+        )
+
+        assert headers["x-litellm-response-duration-ms"] == "300.0"
+        assert "x-litellm-overhead-duration-ms" not in headers
+
+    def test_prefers_response_hidden_params_over_logging_obj_timing(self):
+        from litellm.proxy.common_request_processing import ProxyBaseLLMRequestProcessing
+
+        headers = ProxyBaseLLMRequestProcessing.get_custom_headers(
+            user_api_key_dict=self._make_user_api_key_dict(),
+            call_id="test-call-id",
+            hidden_params={"_response_ms": 300.0, "litellm_overhead_time_ms": 7.5},
+            litellm_logging_obj=self._timing_logging_obj(
+                {"_response_ms": 500.0, "litellm_overhead_time_ms": 42.5}
+            ),
+        )
+
+        assert headers["x-litellm-response-duration-ms"] == "300.0"
+        assert headers["x-litellm-overhead-duration-ms"] == "7.5"
+
+    def test_omits_timing_when_no_source_has_it(self):
+        from litellm.proxy.common_request_processing import ProxyBaseLLMRequestProcessing
+
+        headers = ProxyBaseLLMRequestProcessing.get_custom_headers(
+            user_api_key_dict=self._make_user_api_key_dict(),
+            call_id="test-call-id",
+            hidden_params={},
+            litellm_logging_obj=self._timing_logging_obj({}),
+        )
+
+        assert "x-litellm-response-duration-ms" not in headers
+        assert "x-litellm-overhead-duration-ms" not in headers

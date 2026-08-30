@@ -12,6 +12,7 @@ import time
 import traceback
 from datetime import datetime as dt_object
 from functools import lru_cache
+from collections.abc import Mapping
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -391,6 +392,7 @@ class Logging(LiteLLMLoggingBaseClass):
 
         # Init Caching related details
         self.caching_details: Optional[CachingDetails] = None
+        self.response_timing_metrics: Mapping[str, float] = {}
 
         # Passthrough endpoint guardrails config for field targeting
         self.passthrough_guardrails_config: Optional[Dict[str, Any]] = None
@@ -409,6 +411,9 @@ class Logging(LiteLLMLoggingBaseClass):
         # enqueue closure here instead of firing it immediately.
         self._defer_async_logging: bool = False
         self._enqueue_deferred_logging: Optional[Callable[[], None]] = None
+
+    def set_response_timing_metrics(self, timing_metrics: Mapping[str, float]) -> None:
+        self.response_timing_metrics = dict(timing_metrics)  # pyright: ignore[reportAssignmentType]  # dict is a valid Mapping
 
     def process_dynamic_callbacks(self):
         """
@@ -5305,6 +5310,9 @@ def get_standard_logging_object_payload(
         clean_hidden_params = StandardLoggingPayloadSetup.get_hidden_params(hidden_params)
         if clean_hidden_params["response_cost"] is None and raw_response_cost is not None:
             clean_hidden_params["response_cost"] = response_cost
+        if clean_hidden_params["litellm_overhead_time_ms"] is None and status == "success":
+            timing_metrics = getattr(logging_obj, "response_timing_metrics", None) or {}
+            clean_hidden_params["litellm_overhead_time_ms"] = timing_metrics.get("litellm_overhead_time_ms")
 
         model_cost_information = StandardLoggingPayloadSetup.get_model_cost_information(
             base_model=base_model,

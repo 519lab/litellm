@@ -1011,9 +1011,7 @@ class LiteLLMAnthropicMessagesAdapter:
         """
         if not model or not custom_llm_provider:
             return False
-        supported_params = litellm.get_supported_openai_params(
-            model=model, custom_llm_provider=custom_llm_provider
-        )
+        supported_params = litellm.get_supported_openai_params(model=model, custom_llm_provider=custom_llm_provider)
         return "reasoning_effort" in (supported_params or ())
 
     def _translate_thinking_to_openai(

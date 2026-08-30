@@ -3936,3 +3936,96 @@ def test_pre_call_does_not_pin_request_in_module_state(logging_obj):
     logging_obj.post_call(original_response='{"ok": true}', input=big_input, api_key="sk-test")
 
     assert litellm.error_logs == {}
+
+
+def test_get_standard_logging_object_payload_reads_overhead_from_logging_obj_for_dict_results(logging_obj):
+    import datetime
+
+    from litellm.litellm_core_utils.litellm_logging import get_standard_logging_object_payload
+
+    logging_obj.set_response_timing_metrics({"_response_ms": 1000.0, "litellm_overhead_time_ms": 100.0})
+    now = datetime.datetime.now()
+    payload = get_standard_logging_object_payload(
+        kwargs={"litellm_call_id": "call-1", "model": "gpt-4o", "messages": []},
+        init_response_obj={"id": "msg_1", "type": "message", "role": "assistant", "content": []},
+        start_time=now,
+        end_time=now,
+        logging_obj=logging_obj,
+        status="success",
+    )
+
+    assert payload is not None
+    assert payload["hidden_params"]["litellm_overhead_time_ms"] == 100.0
+
+
+def test_get_standard_logging_object_payload_survives_logging_obj_without_timing_metrics(logging_obj):
+    import datetime
+
+    from litellm.litellm_core_utils.litellm_logging import get_standard_logging_object_payload
+
+    del logging_obj.response_timing_metrics
+    now = datetime.datetime.now()
+    payload = get_standard_logging_object_payload(
+        kwargs={"litellm_call_id": "call-1", "model": "gpt-4o", "messages": []},
+        init_response_obj={"id": "msg_1", "type": "message", "role": "assistant", "content": []},
+        start_time=now,
+        end_time=now,
+        logging_obj=logging_obj,
+        status="success",
+    )
+
+    assert payload is not None
+    assert payload["hidden_params"]["litellm_overhead_time_ms"] is None
+
+
+def test_get_standard_logging_object_payload_failure_status_keeps_overhead_none(logging_obj):
+    import datetime
+
+    from litellm.litellm_core_utils.litellm_logging import get_standard_logging_object_payload
+
+    logging_obj.set_response_timing_metrics({"_response_ms": 1000.0, "litellm_overhead_time_ms": 100.0})
+    now = datetime.datetime.now()
+    payload = get_standard_logging_object_payload(
+        kwargs={"litellm_call_id": "call-1", "model": "gpt-4o", "messages": []},
+        init_response_obj={},
+        start_time=now,
+        end_time=now,
+        logging_obj=logging_obj,
+        status="failure",
+    )
+
+    assert payload is not None
+    assert payload["hidden_params"]["litellm_overhead_time_ms"] is None
+
+
+def test_get_standard_logging_object_payload_prefers_response_hidden_params_overhead(logging_obj):
+    import datetime
+    import copy
+
+    from litellm.litellm_core_utils.litellm_logging import get_standard_logging_object_payload
+    from litellm.types.utils import ModelResponse
+
+    logging_obj.set_response_timing_metrics({"_response_ms": 1000.0, "litellm_overhead_time_ms": 100.0})
+    response = ModelResponse()
+    response._hidden_params = {"litellm_overhead_time_ms": 5.0}
+    now = datetime.datetime.now()
+    payload = get_standard_logging_object_payload(
+        kwargs={"litellm_call_id": "call-1", "model": "gpt-4o", "messages": []},
+        init_response_obj=response,
+        start_time=now,
+        end_time=now,
+        logging_obj=logging_obj,
+        status="success",
+    )
+
+    assert payload is not None
+    assert payload["hidden_params"]["litellm_overhead_time_ms"] == 5.0
+
+
+def test_response_timing_metrics_survive_deepcopy(logging_obj):
+    import copy
+
+    assert logging_obj.response_timing_metrics == {}
+    logging_obj.set_response_timing_metrics({"_response_ms": 12.5})
+
+    assert copy.deepcopy(logging_obj).response_timing_metrics == {"_response_ms": 12.5}
