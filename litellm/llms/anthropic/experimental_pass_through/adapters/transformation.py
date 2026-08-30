@@ -1110,6 +1110,30 @@ class LiteLLMAnthropicMessagesAdapter:
             if k not in translatable_params:  # pass remaining params as is
                 new_kwargs[k] = v  # type: ignore
 
+    @staticmethod
+    def _normalize_system_role_messages(
+        messages: list[Union[AnthropicMessagesUserMessageParam, AnthopicMessagesAssistantMessageParam]],
+    ) -> list[Union[AnthropicMessagesUserMessageParam, AnthopicMessagesAssistantMessageParam]]:
+        """Convert mid-conversation system role messages to user messages.
+
+        Non-Anthropic backends reject role='system' anywhere in the messages array. Claude Code
+        injects mid-conversation system reminders with role='system'; converting them to user
+        messages preserves the context on other backends.
+        """
+        result: list[Union[AnthropicMessagesUserMessageParam, AnthopicMessagesAssistantMessageParam]] = []
+        for m in messages:
+            if m.get("role") != "system":
+                result.append(m)
+                continue
+            content = m.get("content", "")
+            if isinstance(content, list):
+                text = "\n".join(c.get("text", "") for c in content if isinstance(c, dict) and c.get("type") == "text")
+            else:
+                text = str(content) if content else ""
+            if text:
+                result.append(cast(AnthropicMessagesUserMessageParam, {"role": "user", "content": text}))
+        return result
+
     def translate_anthropic_to_openai(
         self,
         anthropic_message_request: AnthropicMessagesRequest,
@@ -1138,6 +1162,7 @@ class LiteLLMAnthropicMessagesAdapter:
             ],
             anthropic_message_request["messages"],
         )
+        messages_list = self._normalize_system_role_messages(messages_list)
         new_messages = self.translate_anthropic_messages_to_openai(
             messages=messages_list,
             model=anthropic_message_request.get("model"),

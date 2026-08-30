@@ -3248,3 +3248,72 @@ def test_translate_openai_content_emits_signature_only_thinking_block():
     assert len(result) == 1, f"expected 1 thinking block; got {result}"
     assert result[0]["type"] == "thinking"
     assert result[0]["signature"] == "abc123sigdata"
+
+
+def test_normalize_system_role_messages_converts_to_user():
+    """Mid-conversation system role messages must become user messages for non-Anthropic backends."""
+    adapter = LiteLLMAnthropicMessagesAdapter()
+    messages = [
+        {"role": "user", "content": "Hello"},
+        {"role": "assistant", "content": "Hi there"},
+        {"role": "system", "content": "Remember to be concise."},
+        {"role": "user", "content": "Tell me more"},
+    ]
+    result = adapter._normalize_system_role_messages(messages)  # type: ignore[arg-type]
+    assert len(result) == 4
+    assert result[0]["role"] == "user"
+    assert result[1]["role"] == "assistant"
+    assert result[2]["role"] == "user"
+    assert result[2]["content"] == "Remember to be concise."
+    assert result[3]["role"] == "user"
+
+
+def test_normalize_system_role_messages_drops_empty_system():
+    """A system message with empty content is dropped rather than injected as a blank user turn."""
+    adapter = LiteLLMAnthropicMessagesAdapter()
+    messages = [
+        {"role": "user", "content": "Hello"},
+        {"role": "system", "content": ""},
+        {"role": "user", "content": "World"},
+    ]
+    result = adapter._normalize_system_role_messages(messages)  # type: ignore[arg-type]
+    assert len(result) == 2
+    assert all(m["role"] == "user" for m in result)
+
+
+def test_normalize_system_role_messages_handles_list_content():
+    """System messages with list content (text blocks) are flattened to text."""
+    adapter = LiteLLMAnthropicMessagesAdapter()
+    messages = [
+        {"role": "user", "content": "Hi"},
+        {
+            "role": "system",
+            "content": [
+                {"type": "text", "text": "Be concise."},
+                {"type": "text", "text": "Be accurate."},
+            ],
+        },
+    ]
+    result = adapter._normalize_system_role_messages(messages)  # type: ignore[arg-type]
+    assert len(result) == 2
+    assert result[1]["role"] == "user"
+    assert "Be concise." in result[1]["content"]
+    assert "Be accurate." in result[1]["content"]
+
+
+def test_translate_anthropic_to_openai_normalizes_mid_conversation_system():
+    """System role messages in messages array must not survive into the OpenAI messages list."""
+    adapter = LiteLLMAnthropicMessagesAdapter()
+    request = {
+        "model": "gpt-4o",
+        "messages": [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi"},
+            {"role": "system", "content": "Be concise."},
+            {"role": "user", "content": "Summarize"},
+        ],
+        "max_tokens": 100,
+    }
+    openai_request, _ = adapter.translate_anthropic_to_openai(request)  # type: ignore[arg-type]
+    roles = [m["role"] for m in openai_request["messages"]]
+    assert "system" not in roles, f"system role must not appear in translated messages; got roles {roles}"

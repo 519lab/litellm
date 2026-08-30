@@ -1,6 +1,6 @@
 import os
 import sys
-from typing import Final, FrozenSet, List, Literal, Optional
+from typing import Final, List, Literal, Optional
 
 from litellm.litellm_core_utils.env_utils import get_env_int, get_env_int_or_none
 
@@ -1457,7 +1457,7 @@ SPEND_LOG_QUEUE_SIZE_THRESHOLD = int(os.getenv("SPEND_LOG_QUEUE_SIZE_THRESHOLD",
 SPEND_LOG_QUEUE_POLL_INTERVAL = float(os.getenv("SPEND_LOG_QUEUE_POLL_INTERVAL", 2.0))
 RESPONSES_SESSION_LOOKUP_MAX_ATTEMPTS = max(1, int(os.getenv("RESPONSES_SESSION_LOOKUP_MAX_ATTEMPTS", "3")))
 RESPONSES_SESSION_LOOKUP_RETRY_INTERVAL = float(os.getenv("RESPONSES_SESSION_LOOKUP_RETRY_INTERVAL", "0.2"))
-NON_INFERENCE_CALL_TYPES: Final[FrozenSet[str]] = frozenset(
+NON_INFERENCE_CALL_TYPES: Final[frozenset[str]] = frozenset(
     {
         "get_responses",
         "aget_responses",
