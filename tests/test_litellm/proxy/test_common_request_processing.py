@@ -5086,3 +5086,44 @@ class TestStreamingClientDisconnectBilling:
         )
 
         proxy_logging_obj._arelease_max_parallel_requests_on_disconnect.assert_awaited_once()
+
+
+class TestProxyExceptionFromHttpException:
+    """Regression: dict-detail HTTPExceptions on /v1/messages were not converted to
+    ProxyException — auth failures returned a raw str() repr instead of structured JSON."""
+
+    def test_dict_detail_extracted_as_message_and_structured_fields(self):
+        from fastapi import HTTPException
+
+        from litellm.proxy.common_request_processing import proxy_exception_from_http_exception
+
+        exc = HTTPException(status_code=400, detail={"error": "key not found"})
+        result = proxy_exception_from_http_exception(exc, {})
+
+        assert result.message == "key not found"
+        assert result.code == 400
+        assert isinstance(result.provider_specific_fields, dict)
+
+    def test_string_detail_used_as_message(self):
+        from fastapi import HTTPException
+
+        from litellm.proxy.common_request_processing import proxy_exception_from_http_exception
+
+        exc = HTTPException(status_code=403, detail="forbidden")
+        result = proxy_exception_from_http_exception(exc, {})
+
+        assert result.message == "forbidden"
+        assert result.code == 403
+        assert result.provider_specific_fields is None
+
+    def test_headers_forwarded(self):
+        from fastapi import HTTPException
+
+        from litellm.proxy.common_request_processing import proxy_exception_from_http_exception
+
+        exc = HTTPException(status_code=429, detail="rate limited")
+        headers = {"x-ratelimit-remaining": "0"}
+        result = proxy_exception_from_http_exception(exc, headers)
+
+        assert result.headers is not None
+        assert "x-ratelimit-remaining" in result.headers
