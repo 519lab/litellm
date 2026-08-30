@@ -89,7 +89,6 @@ from litellm.llms.anthropic.experimental_pass_through.context_management import 
     PolyfillResult,
 )
 from litellm.types.llms.anthropic import (
-    ANTHROPIC_HOSTED_TOOLS,
     AllAnthropicToolsValues,
     AnthopicMessagesAssistantMessageParam,
     AnthropicFinishReason,
@@ -361,6 +360,26 @@ class LiteLLMAnthropicMessagesAdapter:
         tool_type = tool.get("type", "")
         tool_name = tool.get("name", "")
         return (isinstance(tool_type, str) and tool_type.startswith("web_search")) or tool_name == "web_search"
+
+    _NATIVE_ANTHROPIC_TOOL_TYPE_PREFIXES: tuple[str, ...] = (
+        "web_search",
+        "computer",
+        "text_editor",
+        "bash",
+    )
+
+    @classmethod
+    def _is_native_anthropic_tool(cls, tool: Dict[str, Any]) -> bool:
+        """Return True for provider-native Anthropic tools (computer_use, web_search, etc.).
+
+        These tools have a versioned type string (e.g. "computer_20250124") and must be
+        forwarded as-is rather than re-wrapped as OpenAI function tools, which would strip
+        the Anthropic-specific fields the backend needs.
+        """
+        tool_type = tool.get("type", "")
+        return isinstance(tool_type, str) and any(
+            tool_type.startswith(prefix) for prefix in cls._NATIVE_ANTHROPIC_TOOL_TYPE_PREFIXES
+        )
 
     def translate_anthropic_messages_to_openai(
         self,
@@ -783,10 +802,9 @@ class LiteLLMAnthropicMessagesAdapter:
         ]
 
         for idx, tool in enumerate(tools):
-            # Check if this is an Anthropic-native tool that should be kept as-is
-            tool_type = tool.get("type", "")
-            if any(tool_type.startswith(t.value) for t in ANTHROPIC_HOSTED_TOOLS):
-                # Keep Anthropic-native tools in their original format
+            # Keep provider-native Anthropic tools (computer_use, web_search, text_editor, bash)
+            # in their original format so the backend receives the Anthropic-specific fields.
+            if self._is_native_anthropic_tool(cast(Dict[str, Any], tool)):
                 new_tools.append(tool)  # type: ignore[arg-type]
                 continue
 
@@ -971,7 +989,7 @@ class LiteLLMAnthropicMessagesAdapter:
         anthropic_message_request: AnthropicMessagesRequest,
         new_kwargs: ChatCompletionRequest,
     ) -> Dict[str, str]:
-        """Translate tools and extract web_search_options when needed."""
+        """Translate tools, passing native Anthropic tools (computer_use, web_search, etc.) through as-is."""
         if "tools" not in anthropic_message_request:
             return {}
 
@@ -979,23 +997,8 @@ class LiteLLMAnthropicMessagesAdapter:
         if not tools:
             return {}
 
-        web_search_tools: List[AllAnthropicToolsValues] = []
-        regular_tools: List[AllAnthropicToolsValues] = []
-        for tool in tools:
-            cast_tool = cast(Dict[str, Any], tool)
-            if self._is_web_search_tool(cast_tool):
-                web_search_tools.append(cast(AllAnthropicToolsValues, tool))
-            else:
-                regular_tools.append(cast(AllAnthropicToolsValues, tool))
-
-        if web_search_tools:
-            new_kwargs["web_search_options"] = {}  # type: ignore
-
-        if not regular_tools:
-            return {}
-
         translated_tools, tool_name_mapping = self.translate_anthropic_tools_to_openai(
-            tools=regular_tools,
+            tools=list(tools),
             model=new_kwargs.get("model"),
         )
         new_kwargs["tools"] = translated_tools

@@ -2559,10 +2559,10 @@ def test_is_web_search_tool():
 
 def test_translate_anthropic_to_openai_with_web_search_tool():
     """
-    Test that Anthropic web search tools are converted to web_search_options parameter.
+    Test that Anthropic web search tools pass through to the tools array unchanged.
 
-    When a user sends an Anthropic /v1/messages request with {"type": "web_search_20260209"}
-    tool, it should be transformed to OpenAI format with web_search_options: {} parameter.
+    Provider-native tools (web_search, computer, text_editor, bash) are forwarded
+    as-is so the target backend (e.g. Gemini) can consume them directly.
     """
     from litellm.types.llms.anthropic import AnthropicMessagesRequest
 
@@ -2588,24 +2588,26 @@ def test_translate_anthropic_to_openai_with_web_search_tool():
         anthropic_message_request=anthropic_request
     )
 
-    # web_search_options should be added
-    assert "web_search_options" in openai_request
-    assert openai_request["web_search_options"] == {}
+    # Native web_search tool should pass through to the tools array unchanged
+    assert "tools" in openai_request
+    assert len(openai_request["tools"]) == 1
+    assert openai_request["tools"][0]["type"] == "web_search_20260209"
+    assert openai_request["tools"][0]["name"] == "web_search"
 
-    # web search tool should NOT be in the tools array
-    assert "tools" not in openai_request or openai_request.get("tools") == []
+    # web_search_options must NOT be injected (that was the old, broken behavior)
+    assert "web_search_options" not in openai_request
 
-    # tool_name_mapping should be empty since no regular tools were present
+    # No regular tools -> no name-truncation mapping
     assert tool_name_mapping == {}
 
 
 def test_translate_anthropic_to_openai_with_mixed_tools():
     """
-    Test that web search tools are separated from regular tools.
+    Test that native and regular tools are both forwarded correctly.
 
-    When a request has both web search tools and regular function tools,
-    only the regular tools should be in the tools array, and web_search_options
-    should be added.
+    Native tools (web_search, computer, …) pass through unchanged; regular
+    function tools are translated to OpenAI function format.  Both end up in
+    the same tools array; web_search_options is not injected.
     """
     from litellm.types.llms.anthropic import AnthropicMessagesRequest
 
@@ -2639,14 +2641,19 @@ def test_translate_anthropic_to_openai_with_mixed_tools():
         anthropic_message_request=anthropic_request
     )
 
-    # web_search_options should be added
-    assert "web_search_options" in openai_request
-    assert openai_request["web_search_options"] == {}
-
-    # Only get_weather tool should be in the tools array
+    # Both tools should be in the tools array
     assert "tools" in openai_request
-    assert len(openai_request["tools"]) == 1
-    assert openai_request["tools"][0]["function"]["name"] == "get_weather"
+    assert len(openai_request["tools"]) == 2
+
+    tool_types = {t.get("type") for t in openai_request["tools"]}
+    assert "web_search_20260209" in tool_types
+    assert "function" in tool_types
+
+    function_tool = next(t for t in openai_request["tools"] if t.get("type") == "function")
+    assert function_tool["function"]["name"] == "get_weather"
+
+    # web_search_options must NOT be injected
+    assert "web_search_options" not in openai_request
 
     # tool_name_mapping should be empty for short tool names
     assert tool_name_mapping == {}
@@ -3317,3 +3324,86 @@ def test_translate_anthropic_to_openai_normalizes_mid_conversation_system():
     openai_request, _ = adapter.translate_anthropic_to_openai(request)  # type: ignore[arg-type]
     roles = [m["role"] for m in openai_request["messages"]]
     assert "system" not in roles, f"system role must not appear in translated messages; got roles {roles}"
+
+
+def test_computer_use_tool_passes_through_as_native():
+    """computer_use tools must survive bridge translation without being re-wrapped as OpenAI functions."""
+    adapter = LiteLLMAnthropicMessagesAdapter()
+    computer_tool = {
+        "type": "computer_20250124",
+        "name": "computer",
+        "display_width_px": 1920,
+        "display_height_px": 1080,
+    }
+    request = {
+        "model": "gpt-4o",
+        "messages": [{"role": "user", "content": "Click the button"}],
+        "max_tokens": 100,
+        "tools": [computer_tool],
+    }
+    openai_request, _ = adapter.translate_anthropic_to_openai(request)  # type: ignore[arg-type]
+    assert "tools" in openai_request, "tools must be present in translated request"
+    assert len(openai_request["tools"]) == 1
+    translated = openai_request["tools"][0]
+    assert translated.get("type") == "computer_20250124", "computer_use tool type must be preserved"
+    assert translated.get("display_width_px") == 1920
+
+
+def test_web_search_tool_passes_through_as_native():
+    """web_search tools must be present in the translated tools list, not silently dropped."""
+    adapter = LiteLLMAnthropicMessagesAdapter()
+    web_search_tool = {
+        "type": "web_search_20260209",
+        "name": "web_search",
+    }
+    request = {
+        "model": "gpt-4o",
+        "messages": [{"role": "user", "content": "Search something"}],
+        "max_tokens": 100,
+        "tools": [web_search_tool],
+    }
+    openai_request, _ = adapter.translate_anthropic_to_openai(request)  # type: ignore[arg-type]
+    assert "tools" in openai_request, "tools must be present in translated request"
+    assert len(openai_request["tools"]) == 1
+    translated = openai_request["tools"][0]
+    assert translated.get("type") == "web_search_20260209", "web_search tool type must be preserved"
+
+
+def test_native_anthropic_tool_mixed_with_regular_tools():
+    """Native tools must pass through while regular tools are translated normally."""
+    adapter = LiteLLMAnthropicMessagesAdapter()
+    request = {
+        "model": "gpt-4o",
+        "messages": [{"role": "user", "content": "Help me"}],
+        "max_tokens": 100,
+        "tools": [
+            {
+                "type": "computer_20250124",
+                "name": "computer",
+                "display_width_px": 1280,
+                "display_height_px": 720,
+            },
+            {
+                "type": "custom",
+                "name": "my_function",
+                "input_schema": {"type": "object", "properties": {}},
+            },
+        ],
+    }
+    openai_request, _ = adapter.translate_anthropic_to_openai(request)  # type: ignore[arg-type]
+    assert "tools" in openai_request
+    assert len(openai_request["tools"]) == 2
+    types = {t.get("type") for t in openai_request["tools"]}
+    assert "computer_20250124" in types, "computer_use tool must pass through"
+    assert "function" in types, "regular tool must be converted to OpenAI function"
+
+
+def test_is_native_anthropic_tool_detects_all_prefixes():
+    """_is_native_anthropic_tool must recognise all known native tool type prefixes."""
+    adapter = LiteLLMAnthropicMessagesAdapter()
+    assert adapter._is_native_anthropic_tool({"type": "computer_20250124"})
+    assert adapter._is_native_anthropic_tool({"type": "web_search_20260209"})
+    assert adapter._is_native_anthropic_tool({"type": "text_editor_20250124"})
+    assert adapter._is_native_anthropic_tool({"type": "bash_20250124"})
+    assert not adapter._is_native_anthropic_tool({"type": "custom"})
+    assert not adapter._is_native_anthropic_tool({"type": "function"})
