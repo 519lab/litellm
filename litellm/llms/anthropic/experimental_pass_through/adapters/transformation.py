@@ -6,6 +6,7 @@ from typing import (
     Any,
     AsyncIterator,
     Dict,
+    Final,
     Iterator,
     List,
     Literal,
@@ -15,6 +16,7 @@ from typing import (
     cast,
 )
 
+import litellm
 from litellm.llms.anthropic.experimental_pass_through.utils import (
     is_reasoning_auto_summary_enabled,
 )
@@ -161,7 +163,9 @@ class AnthropicAdapter:
         return result
 
     def translate_completion_input_params_with_tool_mapping(
-        self, kwargs
+        self,
+        kwargs: Dict[str, Any],
+        custom_llm_provider: str | None = None,
     ) -> Tuple[Optional[ChatCompletionRequest], Dict[str, str]]:
         """
         Translate Anthropic request params to OpenAI format, returning tool name mapping.
@@ -192,7 +196,10 @@ class AnthropicAdapter:
         (
             translated_body,
             tool_name_mapping,
-        ) = LiteLLMAnthropicMessagesAdapter().translate_anthropic_to_openai(anthropic_message_request=request_body)
+        ) = LiteLLMAnthropicMessagesAdapter().translate_anthropic_to_openai(
+            anthropic_message_request=request_body,
+            custom_llm_provider=custom_llm_provider,
+        )
 
         return translated_body, tool_name_mapping
 
@@ -715,6 +722,23 @@ class LiteLLMAnthropicMessagesAdapter:
                 return {"reasoning_effort": reasoning_effort}
             return {}
 
+    @staticmethod
+    def _apply_reasoning_summary_wrapping(
+        reasoning_effort: str,
+        thinking: Dict[str, object],
+    ) -> Any:
+        """Apply the reasoning_effort/summary wrapping rules for thinking->reasoning_effort paths."""
+        thinking_type: Final = thinking.get("type") if isinstance(thinking, dict) else None
+        if thinking_type == "disabled":
+            return reasoning_effort
+
+        summary: Final = thinking.get("summary") if isinstance(thinking, dict) else None
+        if summary:
+            return {"effort": reasoning_effort, "summary": summary}
+        if is_reasoning_auto_summary_enabled():
+            return {"effort": reasoning_effort, "summary": "detailed"}
+        return reasoning_effort
+
     def translate_anthropic_tool_choice_to_openai(
         self, tool_choice: AnthropicMessagesToolChoice
     ) -> ChatCompletionToolChoiceValues:
@@ -977,12 +1001,34 @@ class LiteLLMAnthropicMessagesAdapter:
         new_kwargs["tools"] = translated_tools
         return tool_name_mapping
 
+    @staticmethod
+    def _target_declares_reasoning_effort(model: str, custom_llm_provider: str | None) -> bool:
+        """Whether the target declares reasoning_effort among its supported params.
+
+        Without a resolved provider the tier stays behind; resolving it from the model prefix could
+        trigger an OAuth device flow for some providers (github_copilot, chatgpt) and this can run
+        inside a logging callback.
+        """
+        if not model or not custom_llm_provider:
+            return False
+        supported_params = litellm.get_supported_openai_params(
+            model=model, custom_llm_provider=custom_llm_provider
+        )
+        return "reasoning_effort" in (supported_params or ())
+
     def _translate_thinking_to_openai(
         self,
         anthropic_message_request: AnthropicMessagesRequest,
         new_kwargs: ChatCompletionRequest,
+        *,
+        custom_llm_provider: str | None = None,
     ) -> None:
-        """Translate Anthropic thinking to either thinking or reasoning_effort."""
+        """Translate Anthropic thinking to either thinking or reasoning_effort.
+
+        A Claude-family target keeps thinking verbatim. Bedrock takes output_config for the tier.
+        Another bridged Claude target takes reasoning_effort if it declares that param; if it
+        declares neither carrier, the bare thinking block is kept as-is.
+        """
         if "thinking" not in anthropic_message_request:
             return
 
@@ -990,41 +1036,42 @@ class LiteLLMAnthropicMessagesAdapter:
         if not thinking:
             return
 
-        model = new_kwargs.get("model", "")
-        if self.is_anthropic_claude_model(model) or self.is_bedrock_arn_model(model):
-            new_kwargs["thinking"] = thinking  # type: ignore
+        model: Final = new_kwargs.get("model", "")
+        is_bedrock_target: Final = model.startswith(("bedrock/", "converse/", "invoke/")) or self.is_bedrock_arn_model(
+            model
+        )
+        is_claude_target: Final = self.is_anthropic_claude_model(model) or self.is_bedrock_arn_model(model)
+        output_config: Final = anthropic_message_request.get("output_config")
+
+        if is_claude_target:
+            new_kwargs["thinking"] = thinking  # pyright: ignore[reportArgumentType]  # extra param not in TypedDict
+            if is_bedrock_target:
+                if isinstance(output_config, dict):
+                    effort_config: Final = {k: v for k, v in output_config.items() if k != "format"}
+                    if effort_config:
+                        new_kwargs["output_config"] = effort_config  # pyright: ignore[reportArgumentType]  # extra param not in TypedDict
+                return
+            if not self._target_declares_reasoning_effort(model, custom_llm_provider):
+                return
+
+        thinking_type: Final = thinking.get("type") if isinstance(thinking, dict) else None
+        declared_effort: Final = (
+            output_config.get("effort") if thinking_type == "adaptive" and isinstance(output_config, dict) else None
+        )
+        if is_claude_target and not declared_effort:
             return
 
-        reasoning_effort = self.translate_anthropic_thinking_to_reasoning_effort(cast(Dict[str, Any], thinking))
+        reasoning_effort: Final = declared_effort or self.translate_anthropic_thinking_to_reasoning_effort(
+            cast(Dict[str, Any], thinking)
+        )
         if not reasoning_effort:
             return
 
-        # For adaptive thinking, override with output_config.effort if available
-        if isinstance(thinking, dict) and thinking.get("type") == "adaptive":
-            output_config = anthropic_message_request.get("output_config")
-            if isinstance(output_config, dict) and output_config.get("effort"):
-                reasoning_effort = output_config["effort"]
-
-        summary = thinking.get("summary") if isinstance(thinking, dict) else None
-        auto_summary = is_reasoning_auto_summary_enabled()
-        if summary:
-            new_kwargs["reasoning_effort"] = cast(
-                Any,
-                {
-                    "effort": reasoning_effort,
-                    "summary": summary,
-                },
-            )
-        elif auto_summary:
-            new_kwargs["reasoning_effort"] = cast(
-                Any,
-                {
-                    "effort": reasoning_effort,
-                    "summary": "detailed",
-                },
-            )
-        else:
-            new_kwargs["reasoning_effort"] = reasoning_effort
+        new_kwargs["reasoning_effort"] = (  # pyright: ignore[reportArgumentType]  # extra param not in TypedDict
+            reasoning_effort
+            if is_claude_target
+            else self._apply_reasoning_summary_wrapping(reasoning_effort, cast(Dict[str, object], thinking))
+        )
 
     def _translate_output_format_to_openai(
         self,
@@ -1066,7 +1113,10 @@ class LiteLLMAnthropicMessagesAdapter:
                 new_kwargs[k] = v  # type: ignore
 
     def translate_anthropic_to_openai(
-        self, anthropic_message_request: AnthropicMessagesRequest
+        self,
+        anthropic_message_request: AnthropicMessagesRequest,
+        *,
+        custom_llm_provider: str | None = None,
     ) -> Tuple[ChatCompletionRequest, Dict[str, str]]:
         """
         This is used by the beta Anthropic Adapter, for translating anthropic `/v1/messages` requests to the openai format.
@@ -1125,6 +1175,7 @@ class LiteLLMAnthropicMessagesAdapter:
         self._translate_thinking_to_openai(
             anthropic_message_request=anthropic_message_request,
             new_kwargs=new_kwargs,
+            custom_llm_provider=custom_llm_provider,
         )
         ## CONVERT OUTPUT_FORMAT to RESPONSE_FORMAT
         self._translate_output_format_to_openai(

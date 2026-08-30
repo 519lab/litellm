@@ -9,15 +9,29 @@ Covers:
 
 import json
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Final, Optional
 from unittest.mock import patch
 
 import pytest
 
+import litellm
 from litellm.llms.anthropic.experimental_pass_through.utils import (
     normalize_reasoning_effort_value,
 )
 from litellm.utils import get_model_info
+
+
+@pytest.fixture
+def local_model_cost_map(monkeypatch):
+    original = litellm.model_cost
+    monkeypatch.setenv("LITELLM_LOCAL_MODEL_COST_MAP", "True")
+    litellm.model_cost = litellm.get_model_cost_map(url="")
+    litellm.get_model_info.cache_clear()
+    try:
+        yield
+    finally:
+        litellm.model_cost = original
+        litellm.get_model_info.cache_clear()
 
 
 def _load_model_registry() -> Dict[str, Any]:
@@ -125,102 +139,41 @@ class TestModelRegistryReasoningEffortFields:
 # ---------------------------------------------------------------------------
 
 
-def _mock_model_info(**flags):
-    """Return a mock model_info dict with given capability flags."""
-    return flags
-
-
 class TestNormalizeReasoningEffortValue:
-    """Test degradation chains for normalize_reasoning_effort_value."""
+    """Degradation chains driven against the bundled map rather than hand-built flag dicts.
 
-    # --- "max" degradation chain ---
+    The new implementation resolves supported levels through the same owner that answers
+    /model_group/info, so tests use real map entries to pin behavior."""
 
-    def test_max_stays_max_when_supported(self):
-        with patch(
-            "litellm.utils.get_model_info",
-            return_value=_mock_model_info(
-                supports_max_reasoning_effort=True,
-                supports_xhigh_reasoning_effort=True,
-            ),
-        ):
-            assert normalize_reasoning_effort_value("max", model="test") == "max"
+    @pytest.mark.parametrize(
+        "model, provider, effort, expected",
+        [
+            ("claude-opus-4-7", "anthropic", "max", "max"),
+            ("gpt-5-mini", "azure", "max", "high"),
+            ("gpt-5-mini", "azure", "xhigh", "high"),
+            ("gpt-5-mini", "azure", "minimal", "minimal"),
+        ],
+    )
+    def test_a_tier_degrades_to_the_nearest_level_the_entry_accepts(
+        self, local_model_cost_map, model, provider, effort, expected
+    ):
+        assert normalize_reasoning_effort_value(effort, model, provider) == expected
 
-    def test_max_degrades_to_xhigh(self):
-        with patch(
-            "litellm.utils.get_model_info",
-            return_value=_mock_model_info(
-                supports_max_reasoning_effort=False,
-                supports_xhigh_reasoning_effort=True,
-            ),
-        ):
-            assert normalize_reasoning_effort_value("max", model="test") == "xhigh"
+    @pytest.mark.parametrize("effort", ["none", "low", "medium", "high"])
+    def test_a_tier_outside_any_chain_passes_through(self, local_model_cost_map, effort):
+        assert normalize_reasoning_effort_value(effort, "claude-opus-4-7", "anthropic") == effort
 
-    def test_max_degrades_to_high(self):
-        with patch(
-            "litellm.utils.get_model_info",
-            return_value=_mock_model_info(
-                supports_max_reasoning_effort=False,
-                supports_xhigh_reasoning_effort=False,
-            ),
-        ):
-            assert normalize_reasoning_effort_value("max", model="test") == "high"
+    @pytest.mark.parametrize("effort, expected", [("max", "high"), ("xhigh", "high"), ("minimal", "low")])
+    def test_a_model_the_map_does_not_describe_keeps_the_floor(self, local_model_cost_map, effort, expected):
+        assert normalize_reasoning_effort_value(effort, "totally-made-up-model-xyz", "openai") == expected
 
-    # --- "xhigh" degradation chain ---
-
-    def test_xhigh_stays_xhigh_when_supported(self):
-        with patch(
-            "litellm.utils.get_model_info",
-            return_value=_mock_model_info(supports_xhigh_reasoning_effort=True),
-        ):
-            assert normalize_reasoning_effort_value("xhigh", model="test") == "xhigh"
-
-    def test_xhigh_degrades_to_high(self):
-        with patch(
-            "litellm.utils.get_model_info",
-            return_value=_mock_model_info(supports_xhigh_reasoning_effort=False),
-        ):
-            assert normalize_reasoning_effort_value("xhigh", model="test") == "high"
-
-    # --- "minimal" degradation chain ---
-
-    def test_minimal_stays_minimal_when_supported(self):
-        with patch(
-            "litellm.utils.get_model_info",
-            return_value=_mock_model_info(supports_minimal_reasoning_effort=True),
-        ):
-            assert (
-                normalize_reasoning_effort_value("minimal", model="test") == "minimal"
-            )
-
-    def test_minimal_degrades_to_low(self):
-        with patch(
-            "litellm.utils.get_model_info",
-            return_value=_mock_model_info(supports_minimal_reasoning_effort=False),
-        ):
-            assert normalize_reasoning_effort_value("minimal", model="test") == "low"
-
-    # --- passthrough values ---
-
-    def test_high_passes_through(self):
-        assert normalize_reasoning_effort_value("high", model="test") == "high"
-
-    def test_medium_passes_through(self):
-        assert normalize_reasoning_effort_value("medium", model="test") == "medium"
-
-    def test_low_passes_through(self):
-        assert normalize_reasoning_effort_value("low", model="test") == "low"
-
-    # --- exception fallback ---
-
-    def test_exception_fallback_uses_empty_model_info(self):
-        """When get_model_info raises, treat model_info as {} (no capabilities)."""
+    def test_exception_fallback_keeps_chain_floor(self):
+        """When get_model_info raises, fall back to the chain terminal."""
         with patch(
             "litellm.utils.get_model_info",
             side_effect=Exception("model not found"),
         ):
-            # "max" with no capabilities -> "high"
             assert normalize_reasoning_effort_value("max", model="unknown") == "high"
-            # "minimal" with no capabilities -> "low"
             assert normalize_reasoning_effort_value("minimal", model="unknown") == "low"
 
 
