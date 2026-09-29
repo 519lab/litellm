@@ -10,6 +10,8 @@ before response.completed.
 
 from unittest.mock import AsyncMock
 
+import pytest
+
 from litellm.responses.litellm_completion_transformation.streaming_iterator import (
     LiteLLMCompletionStreamingIterator,
 )
@@ -397,3 +399,27 @@ def test_reused_index_with_new_call_id_marks_fallback_ambiguous():
     assert arguments_by_call_id["call_b"] == '{"b":'
     assert arguments_by_call_id["call_a"] != '{"a":1}'
     assert arguments_by_call_id["call_b"] != '{"b":1}'
+
+
+@pytest.mark.parametrize(
+    "request_tool_choice, expected",
+    [
+        ({"type": "function", "function": {"name": "get_time"}}, {"type": "function", "name": "get_time"}),
+        ({"type": "function", "name": "get_time"}, {"type": "function", "name": "get_time"}),
+        ({"type": "tool", "name": "get_time"}, "required"),
+        ({"type": "any"}, "required"),
+        ({"type": "auto"}, "auto"),
+        ({"type": "none"}, "none"),
+        ("required", "required"),
+    ],
+)
+def test_response_created_event_survives_forced_tool_choice(request_tool_choice, expected):
+    iterator = LiteLLMCompletionStreamingIterator(
+        model="test-model",
+        litellm_custom_stream_wrapper=AsyncMock(),
+        request_input="Test input",
+        responses_api_request={"tool_choice": request_tool_choice},
+    )
+
+    for event in (iterator.create_response_created_event(), iterator.create_response_in_progress_event()):
+        assert event.response.tool_choice == expected

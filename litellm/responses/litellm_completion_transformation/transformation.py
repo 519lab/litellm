@@ -167,6 +167,17 @@ class LiteLLMCompletionResponsesConfig:
         return tool_choice
 
     @staticmethod
+    def _tool_choice_for_responses_object(tool_choice: Any) -> str | dict[str, str]:
+        transformed = LiteLLMCompletionResponsesConfig._transform_tool_choice(tool_choice)
+        if isinstance(transformed, str):
+            return transformed
+        if isinstance(transformed, dict):
+            function_name = (transformed.get("function") or {}).get("name")
+            if function_name:
+                return {"type": "function", "name": function_name}
+        return "auto"
+
+    @staticmethod
     def _should_drop_derived_web_search_options(model: str, custom_llm_provider: str | None) -> bool:
         """
         A Responses ``web_search`` built-in tool is derived into a ``web_search_options`` param.
