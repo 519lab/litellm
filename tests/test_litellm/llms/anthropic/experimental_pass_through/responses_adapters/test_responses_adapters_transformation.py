@@ -381,6 +381,72 @@ class TestTranslateMessagesToResponsesInput:
             }
         ]
 
+    def test_assistant_text_precedes_tool_use_items(self):
+        """Text written before tool_use blocks must stay ahead of the function_call items"""
+        messages = [
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": "Let me look that up."},
+                    {"type": "tool_use", "id": "toolu_a", "name": "first", "input": {}},
+                    {"type": "tool_use", "id": "toolu_b", "name": "second", "input": {}},
+                ],
+            }
+        ]
+        result = _translate_messages(messages)
+        assert [item["type"] for item in result] == ["message", "function_call", "function_call"]
+        assert result[0]["content"] == [{"type": "output_text", "text": "Let me look that up."}]
+        assert [item["call_id"] for item in result[1:]] == ["toolu_a", "toolu_b"]
+
+    def test_assistant_text_between_tool_uses_keeps_block_order(self):
+        messages = [
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": "one"},
+                    {"type": "tool_use", "id": "toolu_a", "name": "first", "input": {}},
+                    {"type": "text", "text": "two"},
+                    {"type": "tool_use", "id": "toolu_b", "name": "second", "input": {}},
+                ],
+            }
+        ]
+        result = _translate_messages(messages)
+        assert [item["type"] for item in result] == ["message", "function_call", "message", "function_call"]
+
+    def test_assistant_text_and_tool_use_reach_chat_as_single_assistant_message(self):
+        """A text plus tool_use turn must become one assistant message holding content and every
+        tool_call, directly followed by the tool results, or chat templates lose the tool calls"""
+        from litellm.responses.litellm_completion_transformation.transformation import (
+            LiteLLMCompletionResponsesConfig,
+        )
+
+        messages = [
+            {"role": "user", "content": "go"},
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": "Starting."},
+                    {"type": "tool_use", "id": "toolu_a", "name": "first", "input": {"x": 1}},
+                    {"type": "tool_use", "id": "toolu_b", "name": "second", "input": {}},
+                ],
+            },
+            {
+                "role": "user",
+                "content": [
+                    {"type": "tool_result", "tool_use_id": "toolu_a", "content": "ra"},
+                    {"type": "tool_result", "tool_use_id": "toolu_b", "content": "rb"},
+                ],
+            },
+        ]
+        chat = LiteLLMCompletionResponsesConfig._transform_response_input_param_to_chat_completion_message(
+            _translate_messages(messages)
+        )
+        roles = [m["role"] if isinstance(m, dict) else m.role for m in chat]
+        assert roles == ["user", "assistant", "tool", "tool"]
+        assistant = chat[1]
+        assert [tc["id"] for tc in assistant["tool_calls"]] == ["toolu_a", "toolu_b"]
+        assert "Starting." in json.dumps(assistant["content"])
+
     def test_assistant_thinking_block_becomes_output_text(self):
         """Assistant thinking block text is included as output_text."""
         messages = [
