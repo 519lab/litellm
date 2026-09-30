@@ -3407,3 +3407,27 @@ def test_is_native_anthropic_tool_detects_all_prefixes():
     assert adapter._is_native_anthropic_tool({"type": "bash_20250124"})
     assert not adapter._is_native_anthropic_tool({"type": "custom"})
     assert not adapter._is_native_anthropic_tool({"type": "function"})
+
+
+@pytest.mark.parametrize(
+    "native_tool",
+    [
+        {"type": "code_execution_20250825", "name": "code_execution"},
+        {"type": "web_fetch_20250910", "name": "web_fetch", "max_uses": 5},
+        {"type": "memory_20250818", "name": "memory"},
+        {"type": "tool_search_tool_regex_20251119", "name": "tool_search_tool_regex"},
+        {"type": "tool_search_tool_bm25_20251119", "name": "tool_search_tool_bm25"},
+    ],
+)
+def test_hosted_anthropic_tools_pass_through_as_native(native_tool):
+    """Every ANTHROPIC_HOSTED_TOOLS family must keep its native shape on the bridge (#2)."""
+    openai_request, _ = LiteLLMAnthropicMessagesAdapter().translate_anthropic_to_openai(
+        {
+            "model": "gpt-4o",
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_tokens": 100,
+            "tools": [native_tool],
+        }
+    )
+
+    assert openai_request["tools"] == [native_tool]

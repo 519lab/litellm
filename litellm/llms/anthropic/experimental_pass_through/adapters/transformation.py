@@ -89,6 +89,7 @@ from litellm.llms.anthropic.experimental_pass_through.context_management import 
     PolyfillResult,
 )
 from litellm.types.llms.anthropic import (
+    ANTHROPIC_HOSTED_TOOLS,
     AllAnthropicToolsValues,
     AnthopicMessagesAssistantMessageParam,
     AnthropicFinishReason,
@@ -362,10 +363,8 @@ class LiteLLMAnthropicMessagesAdapter:
         return (isinstance(tool_type, str) and tool_type.startswith("web_search")) or tool_name == "web_search"
 
     _NATIVE_ANTHROPIC_TOOL_TYPE_PREFIXES: tuple[str, ...] = (
-        "web_search",
+        *(hosted_tool.value for hosted_tool in ANTHROPIC_HOSTED_TOOLS),
         "computer",
-        "text_editor",
-        "bash",
     )
 
     @classmethod
