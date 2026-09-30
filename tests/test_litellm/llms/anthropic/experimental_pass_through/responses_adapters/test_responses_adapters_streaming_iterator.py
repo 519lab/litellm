@@ -130,3 +130,40 @@ class TestProcessEventTextDeltaWithoutOutputItemAdded:
             ("content_block_start", 0),
             ("content_block_delta", 0),
         ]
+
+
+class TestCompletedUsageCarriesCachedTokens:
+    """Prompt-cache hits reported by the backend must reach the streamed
+    message_delta as cache_read_input_tokens (#3)."""
+
+    def _message_delta(self, response: object) -> dict:
+        chunks = _process_all([{"type": "response.completed", "response": response}])
+        return next(c for c in chunks if c["type"] == "message_delta")
+
+    def test_dict_response_maps_cached_tokens(self):
+        delta = self._message_delta(
+            {"usage": {"input_tokens": 23, "output_tokens": 40, "input_tokens_details": {"cached_tokens": 22}}}
+        )
+        assert delta["usage"] == {"input_tokens": 1, "output_tokens": 40, "cache_read_input_tokens": 22}
+
+    def test_typed_response_maps_cached_tokens(self):
+        from litellm.types.llms.openai import ResponseAPIUsage, ResponsesAPIResponse
+
+        response = ResponsesAPIResponse(
+            id="resp_1",
+            created_at=0,
+            output=[],
+            status="completed",
+            usage=ResponseAPIUsage(
+                input_tokens=23,
+                output_tokens=40,
+                total_tokens=63,
+                input_tokens_details={"cached_tokens": 22},
+            ),
+        )
+        delta = self._message_delta(response)
+        assert delta["usage"] == {"input_tokens": 1, "output_tokens": 40, "cache_read_input_tokens": 22}
+
+    def test_no_cache_hit_omits_cache_field(self):
+        delta = self._message_delta({"usage": {"input_tokens": 23, "output_tokens": 40}})
+        assert delta["usage"] == {"input_tokens": 23, "output_tokens": 40}
