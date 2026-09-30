@@ -275,7 +275,7 @@ async def test_non_streaming_response_has_no_decode_window():
     attrs = await _span_attributes(
         _llamacpp_response(None), kwargs={"completion_start_time": end}, start_time=start, end_time=end
     )
-    assert attrs["llm.ttft_ms"] == pytest.approx(2000.0)
+    assert "llm.ttft_ms" not in attrs, "non-streaming completion_start_time is end_time, so it is not a first token"
     assert "llm.tpot_ms" not in attrs
     assert "llm.tps" not in attrs
 

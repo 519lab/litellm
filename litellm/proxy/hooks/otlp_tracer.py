@@ -82,8 +82,10 @@ def _latency_attributes(
 ) -> dict[str, float]:
     ttft_ms = _elapsed_ms(start_time, first_token_time)
     decode_ms = _elapsed_ms(first_token_time, end_time)
-    ttft = {"llm.ttft_ms": round(ttft_ms, 2)} if ttft_ms is not None else {}
-    if decode_ms is None or decode_ms <= 0 or completion_tokens < 2:
+    if ttft_ms is None or decode_ms is None or decode_ms <= 0:
+        return {}
+    ttft = {"llm.ttft_ms": round(ttft_ms, 2)}
+    if completion_tokens < 2:
         return ttft
     decode_tokens = completion_tokens - 1
     return {
