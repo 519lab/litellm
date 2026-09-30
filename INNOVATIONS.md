@@ -130,23 +130,21 @@ build is at or near b11243, delete the hook.
 ### 3. Serve Claude Code through llama.cpp's native Anthropic endpoint
 **Category:** architecture · **Impact 4 · Novelty 3 · Effort 5 · Fit 5**
 
-**The idea.** llama-server implements `/v1/messages` and `/v1/messages/count_tokens`
-natively, including `cache_read_input_tokens` and correct `stop_reason: max_tokens`. The fork
-already has the opt-in (`model_info.supported_endpoints: ["/v1/messages"]`), but the live
-deployment goes through the Responses bridge, which inherits llama.cpp's truncation-status bug
-and a double translation. Turn on native pass-through for the llama.cpp deployment, and make
-`count_tokens` follow the same opt-in so it forwards to the backend instead of translating.
-**Inspired by.** llama.cpp `tools/server` source (`/v1/messages`, `/v1/messages/count_tokens`,
-`/v1/responses/input_tokens`).
-**Implementation sketch.** Config: add `supported_endpoints` to the Qwen deployment's
-`model_info`. Code: in `proxy_server.token_counter`, when
-`_deployment_passes_through_anthropic_messages(model_info)` is true, POST the untouched Anthropic
-body to `{api_base}/messages/count_tokens`. On 404 (an old build), fall back to the fixed #1
-path. Reuse the same helper so the two paths cannot drift.
-**Effort.** 1 hour for config and 2 to 3 hours for the count_tokens forwarder. Risk: native
-`/v1/messages` bypasses the fork's bridge fixes, so replay a Claude Code session before
-switching.
-**First step.** Add the opt-in to the dev config and replay one recorded Claude Code session.
+**The idea.** llama-server implements `/v1/messages` natively, including
+`cache_read_input_tokens` and a correct `stop_reason: max_tokens`. The fork already has the
+opt-in (`model_info.supported_endpoints: ["/v1/messages"]`), but the live deployment goes through
+the Responses bridge. That bridge inherits llama.cpp's truncation-status bug and translates every
+request twice. Turning on native pass-through for the llama.cpp deployment removes a whole class
+of bridge bugs for Claude Code traffic.
+**Inspired by.** llama.cpp `tools/server` source and a side-by-side run this session: native
+`/v1/messages` returned `max_tokens` where the bridge returned `end_turn`.
+**Implementation sketch.** Config only: add `supported_endpoints: ["/v1/messages",
+"/v1/chat/completions", "/v1/responses"]` to the Qwen deployment's `model_info`. A count_tokens
+forwarder was considered and dropped: after fix #1 the default path already matches llama.cpp's
+own count exactly (4463 and 4981).
+**Effort.** 1 hour including a replay. Risk: native `/v1/messages` bypasses the fork's bridge
+fixes (thinking blocks, tool_result shapes), so replay a recorded Claude Code session first.
+**First step.** Add the opt-in to the dev config and replay one Claude Code session end to end.
 
 ### 4. Prefix-cache hit ratio per key and session on the existing dashboard
 **Category:** ops · **Impact 3 · Novelty 3 · Effort 5 · Fit 5**
