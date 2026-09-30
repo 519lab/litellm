@@ -17,6 +17,10 @@ from litellm.proxy.auth.user_api_key_auth import (
     user_api_key_auth_websocket,
 )
 from litellm.proxy.common_request_processing import ProxyBaseLLMRequestProcessing
+from litellm.proxy.common_utils.context_overflow import (
+    detect_context_overflow,
+    responses_context_length_exceeded_stream,
+)
 from litellm.types.llms.openai import ResponseAPIUsage, ResponsesAPIResponse
 from litellm.types.responses.main import DeleteResponseResult
 
@@ -275,12 +279,20 @@ async def responses_api(
         )
         return response_obj
     except Exception as e:
-        raise await processor._handle_llm_api_exception(
-            e=e,
-            user_api_key_dict=user_api_key_dict,
-            proxy_logging_obj=proxy_logging_obj,
-            version=version,
-        )
+        overflow = detect_context_overflow(e) if data.get("stream") is True else None
+        try:
+            raise await processor._handle_llm_api_exception(
+                e=e,
+                user_api_key_dict=user_api_key_dict,
+                proxy_logging_obj=proxy_logging_obj,
+                version=version,
+            )
+        except ProxyException as proxy_exception:
+            if overflow is None:
+                raise
+            return responses_context_length_exceeded_stream(
+                overflow, model=data.get("model"), headers=proxy_exception.headers
+            )
 
 
 @router.post(
