@@ -6,6 +6,18 @@ This module handles the transformation of requests to OpenAI's /v1/responses/inp
 
 from typing import Any, Dict, List, Optional, Union
 
+_ANTHROPIC_ONLY_BLOCK_TYPES = frozenset(
+    {
+        "tool_use",
+        "tool_result",
+        "thinking",
+        "redacted_thinking",
+        "document",
+        "server_tool_use",
+        "web_search_tool_result",
+    }
+)
+
 
 class OpenAICountTokensConfig:
     """
@@ -158,3 +170,51 @@ class OpenAICountTokensConfig:
 
         instructions = "\n".join(instructions_parts) if instructions_parts else None
         return input_items, instructions
+
+    @staticmethod
+    def to_responses_count_request(
+        model: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None,
+        system: Any | None,
+    ) -> tuple[list[dict[str, Any]], str | None, list[dict[str, Any]] | None]:
+        if OpenAICountTokensConfig.is_anthropic_request(messages, tools, system):
+            return OpenAICountTokensConfig.anthropic_request_to_responses_input(
+                model=model, messages=messages, tools=tools, system=system
+            )
+        input_items, instructions = OpenAICountTokensConfig.messages_to_responses_input(messages)
+        return input_items, instructions, tools
+
+    @staticmethod
+    def is_anthropic_request(
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None,
+        system: Any | None,
+    ) -> bool:
+        if system is not None:
+            return True
+        if any(isinstance(tool, dict) and "input_schema" in tool for tool in tools or ()):
+            return True
+        return any(
+            isinstance(block, dict) and block.get("type") in _ANTHROPIC_ONLY_BLOCK_TYPES
+            for message in messages
+            if isinstance(message.get("content"), list)
+            for block in message["content"]
+        )
+
+    @staticmethod
+    def anthropic_request_to_responses_input(
+        model: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None,
+        system: Any | None,
+    ) -> tuple[list[dict[str, Any]], str | None, list[dict[str, Any]] | None]:
+        from litellm.llms.anthropic.experimental_pass_through.responses_adapters.transformation import (
+            LiteLLMAnthropicToResponsesAPIAdapter,
+        )
+
+        optional_fields = {key: value for key, value in (("system", system), ("tools", tools)) if value}
+        translated = LiteLLMAnthropicToResponsesAPIAdapter().translate_request(
+            {"model": model, "messages": messages, **optional_fields}
+        )
+        return translated["input"], translated.get("instructions"), translated.get("tools")

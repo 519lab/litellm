@@ -1,9 +1,12 @@
 import os
 import sys
 
+import pytest
+
 sys.path.insert(
     0, os.path.abspath("../../../../..")
 )  # Adds the parent directory to the system path
+from litellm.llms.openai.responses.count_tokens.token_counter import OpenAITokenCounter
 from litellm.llms.openai.responses.count_tokens.transformation import (
     OpenAICountTokensConfig,
 )
@@ -217,3 +220,93 @@ def test_get_required_headers():
 
     assert headers["Authorization"] == "Bearer sk-test-key"
     assert headers["Content-Type"] == "application/json"
+
+
+_AGENT_SCHEMA = {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}
+_AGENT_TOOLS = [{"name": "Read", "description": "Read a file", "input_schema": _AGENT_SCHEMA}]
+_AGENT_MESSAGES = [
+    {"role": "user", "content": "Fix the failing test"},
+    {
+        "role": "assistant",
+        "content": [
+            {"type": "text", "text": "Reading the file."},
+            {"type": "tool_use", "id": "toolu_1", "name": "Read", "input": {"path": "/src/app.py"}},
+        ],
+    },
+    {
+        "role": "user",
+        "content": [{"type": "tool_result", "tool_use_id": "toolu_1", "content": "def add(a, b): return a - b"}],
+    },
+]
+
+
+class _RecordingHandler:
+    def __init__(self) -> None:
+        self.requests: list[dict] = []
+
+    async def handle_count_tokens_request(self, **kwargs):
+        self.requests.append(kwargs)
+        return {"input_tokens": 4981}
+
+
+def test_is_anthropic_request_detection():
+    config = OpenAICountTokensConfig
+    openai_messages = [
+        {"role": "system", "content": "be brief"},
+        {"role": "assistant", "content": None, "tool_calls": [{"id": "c1", "function": {"name": "f", "arguments": "{}"}}]},
+        {"role": "tool", "tool_call_id": "c1", "content": "ok"},
+    ]
+
+    assert config.is_anthropic_request(_AGENT_MESSAGES, None, None) is True
+    assert config.is_anthropic_request([{"role": "user", "content": "hi"}], _AGENT_TOOLS, None) is True
+    assert config.is_anthropic_request([{"role": "user", "content": "hi"}], None, "be brief") is True
+    assert config.is_anthropic_request(openai_messages, None, None) is False
+
+
+def test_anthropic_agent_turns_translate_to_counted_responses_items():
+    """tool_use / tool_result turns and Anthropic tools must reach /input_tokens in countable form (#1)."""
+    input_items, instructions, tools = OpenAICountTokensConfig.to_responses_count_request(
+        model="qwen", messages=_AGENT_MESSAGES, tools=_AGENT_TOOLS, system="You are a coding agent."
+    )
+
+    item_types = [item.get("type") for item in input_items]
+    assert "function_call" in item_types
+    function_call_output = next(item for item in input_items if item.get("type") == "function_call_output")
+    assert function_call_output["call_id"] == "toolu_1"
+    assert "return a - b" in str(function_call_output["output"])
+    assert instructions == "You are a coding agent."
+    assert tools == [{"type": "function", "name": "Read", "description": "Read a file", "parameters": _AGENT_SCHEMA}]
+
+
+def test_openai_messages_keep_chat_translation():
+    messages = [{"role": "system", "content": "be brief"}, {"role": "user", "content": "hi"}]
+    chat_tools = [{"type": "function", "function": {"name": "f", "parameters": {}}}]
+
+    input_items, instructions, tools = OpenAICountTokensConfig.to_responses_count_request(
+        model="gpt-4o", messages=messages, tools=chat_tools, system=None
+    )
+
+    assert input_items == [{"role": "user", "content": "hi"}]
+    assert instructions == "be brief"
+    assert tools == chat_tools
+
+
+@pytest.mark.asyncio
+async def test_token_counter_sends_translated_anthropic_request():
+    handler = _RecordingHandler()
+    counter = OpenAITokenCounter(handler=handler)
+
+    result = await counter.count_tokens(
+        model_to_use="qwen",
+        messages=_AGENT_MESSAGES,
+        contents=None,
+        deployment={"litellm_params": {"api_key": "none", "api_base": "http://127.0.0.1:56669/v1"}},
+        tools=_AGENT_TOOLS,
+        system="You are a coding agent.",
+    )
+
+    assert result is not None and result.total_tokens == 4981
+    sent = handler.requests[0]
+    assert sent["instructions"] == "You are a coding agent."
+    assert sent["tools"][0]["parameters"] == _AGENT_SCHEMA
+    assert any(item.get("type") == "function_call_output" for item in sent["input"])
