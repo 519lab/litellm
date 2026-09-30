@@ -62,9 +62,13 @@ class OpenAITokenCounter(BaseTokenCounter):
 
         api_base = litellm_params.get("api_base")
 
-        input_items, instructions, count_tools = OpenAICountTokensConfig.to_responses_count_request(
-            model=model_to_use, messages=messages, tools=tools, system=system
-        )
+        try:
+            input_items, instructions, count_tools = OpenAICountTokensConfig.to_responses_count_request(
+                model=model_to_use, messages=messages, tools=tools, system=system
+            )
+        except (AttributeError, KeyError, TypeError, ValueError) as e:
+            verbose_logger.warning(f"Could not translate request for OpenAI CountTokens API, counting locally: {e}")
+            return None
 
         # If no input items were produced (e.g., system-only messages), fall back to local counting
         if not input_items:

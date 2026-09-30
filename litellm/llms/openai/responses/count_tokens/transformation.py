@@ -191,16 +191,17 @@ class OpenAICountTokensConfig:
         tools: list[dict[str, Any]] | None,
         system: Any | None,
     ) -> bool:
-        if system is not None:
-            return True
         if any(isinstance(tool, dict) and "input_schema" in tool for tool in tools or ()):
             return True
-        return any(
+        if any(
             isinstance(block, dict) and block.get("type") in _ANTHROPIC_ONLY_BLOCK_TYPES
             for message in messages
             if isinstance(message.get("content"), list)
             for block in message["content"]
-        )
+        ):
+            return True
+        has_openai_only_markers = any(message.get("role") == "tool" or "tool_calls" in message for message in messages)
+        return system is not None and not has_openai_only_markers
 
     @staticmethod
     def anthropic_request_to_responses_input(

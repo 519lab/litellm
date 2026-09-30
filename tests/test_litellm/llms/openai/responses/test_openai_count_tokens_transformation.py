@@ -261,6 +261,7 @@ def test_is_anthropic_request_detection():
     assert config.is_anthropic_request([{"role": "user", "content": "hi"}], _AGENT_TOOLS, None) is True
     assert config.is_anthropic_request([{"role": "user", "content": "hi"}], None, "be brief") is True
     assert config.is_anthropic_request(openai_messages, None, None) is False
+    assert config.is_anthropic_request(openai_messages, None, "be brief") is False
 
 
 def test_anthropic_agent_turns_translate_to_counted_responses_items():
@@ -310,3 +311,25 @@ async def test_token_counter_sends_translated_anthropic_request():
     assert sent["instructions"] == "You are a coding agent."
     assert sent["tools"][0]["parameters"] == _AGENT_SCHEMA
     assert any(item.get("type") == "function_call_output" for item in sent["input"])
+
+
+class _ExplodingAdapterInput(dict):
+    def get(self, key, default=None):
+        raise TypeError("malformed body")
+
+
+@pytest.mark.asyncio
+async def test_token_counter_falls_back_to_local_count_when_translation_fails():
+    handler = _RecordingHandler()
+    counter = OpenAITokenCounter(handler=handler)
+
+    result = await counter.count_tokens(
+        model_to_use="qwen",
+        messages=[{"role": "user", "content": [_ExplodingAdapterInput(type="tool_result")]}],
+        contents=None,
+        deployment={"litellm_params": {"api_key": "none"}},
+        system="sys",
+    )
+
+    assert result is None
+    assert handler.requests == []
