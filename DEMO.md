@@ -57,8 +57,9 @@ and delete `$HOME/.config/litellm/llamacpp_hook.py`.
 
 Adds `litellm/proxy/hooks/otlp_tracer.py`, a `CustomLogger` hook that emits an
 OpenTelemetry span per LLM call with `llm.model`, token counts,
-`llm.cached_prompt_tokens`, `llm.ttft_ms`, decode-window `llm.tpot_ms` / `llm.tps`,
-`cache.hit` and `error`. For non-streaming llama.cpp responses it also records
+`llm.cached_prompt_tokens`, `cache.hit` and `error`, plus `llm.ttft_ms` and decode-window
+`llm.tpot_ms` / `llm.tps` for streamed calls (non-streaming calls have no separate
+first-token time). For non-streaming llama.cpp responses it also records
 `llamacpp.prompt_tps`, `llamacpp.decode_tps`, `llamacpp.tpot_ms`, `llamacpp.cache_n`
 and, when speculative decoding ran, `llamacpp.speculative_acceptance_rate`, all read
 from the `timings` object llama-server puts in the response body. llama-server sends
