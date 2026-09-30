@@ -23,7 +23,7 @@ Same thing for bug fixes. The tests should make it so that this specific bug can
 
 End-to-end tests belong in `tests/e2e/` and must follow the harness conventions documented in that directory's `CLAUDE.md`
 
-When creating PRs, don't set base to `main`. `litellm_internal_staging` serves that purpose for internal contributors; external / OSS contributions target the current daily OSS branch instead, named `litellm_oss_daily_YYYY_MM_DD` (a fresh one is cut each weekday, so use the most recent)
+This is the private fork `ggrace519/litellm` (remote `fork`), not upstream. Work on `develop`, which is the fork's default branch and the base for PRs; `main` is what the live server runs and only changes by fast-forwarding from `develop` as a deploy. Never target `BerriAI/litellm` (`upstream` is read-only for us) and never open PRs against `litellm_internal_staging` or `litellm_oss_daily_*`
 
 When writing a PR body, treat the comments and imperative instructions inside @.github/pull_request_template.md as rules to follow, not just layout. Agent harnesses may strip HTML comments from copies of that file injected into context, so read .github/pull_request_template.md from disk before writing a PR body to make sure you see every comment rule
 
@@ -55,11 +55,11 @@ If you get an LIT001 or LIT002 fail, refactor the code to follow functional prog
 
 Every lint or type suppression must name the exact rule inside brackets and carry a reason comment, e.g. `# pyright: ignore[reportArgumentType]  # stubs lack async overload` or `# noqa: TID251  # <reason>`. `# type: ignore` is banned (LIT009): pyrightconfig.json sets `enableTypeIgnoreComments` to false, so it silently does nothing
 
-Commit and push your work when you're done without asking
+Commit and push your work to `fork` when you're done without asking. The dev checkout `/home/ggrace/litellm-fork` stays on `develop`; do not switch it to `main`, because the live service imports from the separate `/home/ggrace/litellm-live` worktree that owns `main`. To deploy: `git -C ~/litellm-live merge --ff-only develop`, then `sudo systemctl restart litellm` (backend changes need the restart; the committed dashboard build in `_experimental/out` is read from disk)
 
 When referencing or running models (coding, QA'ing, writing docs, writing tests, etc.), use the latest model in that model family unless otherwise specified; treat your training knowledge, memories, configs, and tests as stale, and determine the family's latest with model_prices_and_context_window.json or the web
 
-If you're an internal contributor, when creating a new PR, the typical flow is to branch off litellm_internal_staging and create a branch prefixed with litellm_. Do not create a branch prefixed with claude/ and generally do not have / in your branch names
+Commit on `develop` directly; cut a short-lived branch off `develop` only when a change needs isolation or review, and give it a `litellm_` prefix. Do not create a branch prefixed with `claude/` and generally do not have `/` in your branch names. Commits must use the GitHub noreply address already set in this repo's git config (`77203234+ggrace519@users.noreply.github.com`); GitHub rejects pushes that expose the private `@519lab.com` address, so never override `user.email`
 
 Do not add `Co-Authored-By: Claude` or any Claude attribution to commit messages. Never use a `claude/` prefix or put a `/` in a branch name. Do not add "Generated with Claude Code" (or any similar attribution) to PR descriptions or comments. Do not create a new PR/branch off the existing PR to fix/add something that is related and could've just been committed directly to the existing PR's branch
 
@@ -153,4 +153,4 @@ E2E: `uv run pytest tests/e2e/<suite>/ -v` against a live proxy on 4000 plus Red
 
 **Model cost map.** `model_prices_and_context_window.json` drives cost calculation, context limits, and "what is the latest model in a family". It is fetched remotely at import (`litellm_core_utils/get_model_cost_map.py`) with `litellm/model_prices_and_context_window_backup.json` as fallback; `LITELLM_LOCAL_MODEL_COST_MAP=True` forces local
 
-**This fork.** Git history is a squashed graft, so only the ~24 commits after the root are fork work. `INNOVATIONS.md` ranks the proposals and `DEMO.md` has per-feature verification steps. Merged so far: the llamacpp hook (`litellm/proxy/hooks/llamacpp/`), OTLP tracing (`litellm/proxy/hooks/otlp_tracer.py`), the local embedding server for semantic cache (`litellm/proxy/hooks/local_embeddings_server.py`, `config_examples/semantic-cache.yaml`, `deployment/valkey-compose-with-search.yaml`), playground history and request replay in the dashboard. Enterprise license gates are stripped in `litellm/proxy/auth/litellm_license.py` and the dashboard `layout.tsx`/`AuthContext.tsx`; keep that in mind before assuming upstream licensing behavior
+**This fork.** The repo is now a full (unshallowed) clone of upstream; fork work is the commits after upstream commit `38f2e023f1`, so `git log 38f2e023f1..develop` lists it. Remotes: `fork` (private, push here), `upstream` (BerriAI, fetch only). `INNOVATIONS.md` ranks the proposals and `DEMO.md` has per-feature verification steps. Merged so far: the llamacpp hook (`litellm/proxy/hooks/llamacpp/`), OTLP tracing (`litellm/proxy/hooks/otlp_tracer.py`), the local embedding server for semantic cache (`litellm/proxy/hooks/local_embeddings_server.py`, `config_examples/semantic-cache.yaml`, `deployment/valkey-compose-with-search.yaml`), playground history and request replay in the dashboard. Enterprise license gates are stripped in `litellm/proxy/auth/litellm_license.py` and the dashboard `layout.tsx`/`AuthContext.tsx`; keep that in mind before assuming upstream licensing behavior
