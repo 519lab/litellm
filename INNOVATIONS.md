@@ -71,7 +71,7 @@ These are fixes, not innovations. Each has a tracking issue and its own branch.
 | Issue | Defect | Branch | Proof |
 |---|---|---|---|
 | [#1](https://github.com/ggrace519/litellm/issues/1) | `/v1/messages/count_tokens` drops Anthropic tools, `tool_use` and `tool_result` for `openai/` deployments | `litellm_count_tokens_anthropic_tools` | 2928→4463 and 526→4981, both now equal to llama.cpp's own count |
-| [#2](https://github.com/ggrace519/litellm/issues/2) | fb140f5013 narrowed native-tool detection; code_execution, web_fetch, memory and tool_search tools get re-wrapped | `litellm_anthropic_native_tool_regression` | guardrail round-trip test red on develop, green on branch |
+| [#2](https://github.com/ggrace519/litellm/issues/2) | The guardrail round trip to an Anthropic backend re-wrapped hosted tools (code_execution, web_fetch, memory, tool_search) as custom tools; the bridge's narrow native set is correct for llama.cpp and OpenAI and is kept, while the guardrail now injects the full hosted set | `litellm_anthropic_native_tool_regression` | guardrail round-trip test red on develop, green on branch; bridge still wraps those tools for non-Anthropic backends |
 | [#3](https://github.com/ggrace519/litellm/issues/3) | Responses bridge drops `cached_tokens` from `/v1/messages` usage | `litellm_responses_bridge_cached_tokens` | `{input_tokens: 23}` → `{input_tokens: 1, cache_read_input_tokens: 22}` |
 | [#4](https://github.com/ggrace519/litellm/issues/4) | OTLP tracer: phantom headers, `make_hook` breaks every non-stream request with a 400, `cache_obj` kwarg makes every request fail with a 500 | `litellm_otlp_tracer_real_llamacpp_metrics` | spans with real `timings` in Jaeger |
 
@@ -93,9 +93,10 @@ model then degrades the way a frontier API does, by compacting, instead of killi
 **Inspired by.** Claude Code's gateway troubleshooting table, Codex's `responses_error.rs`,
 and openai/codex#48870.
 **Implementation sketch.** `litellm/proxy/common_utils/context_overflow.py` detects overflow
-from any wording (llama.cpp, OpenAI, Anthropic) through the existing
-`ExceptionCheckers.is_error_str_context_window_exceeded`, extracts N and M, and renders the
-per-surface payload. It is wired into the generic exception paths of
+when the error is a `ContextWindowExceededError` or a 400 whose text carries prompt and
+window token counts (llama.cpp, OpenAI or Anthropic wording), extracts N and M, and renders
+the per-surface payload. Review showed the looser substring list would rewrite unrelated
+errors, such as oversized-string parameters or guardrail messages, into compaction triggers. It is wired into the generic exception paths of
 `anthropic_endpoints/endpoints.py` and `response_api_endpoints/endpoints.py` after the
 failure hooks run, so logging and spend tracking are unchanged.
 **Effort.** Built in about half a day. Main risk: Claude Code's matcher is not published, so the
