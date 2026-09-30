@@ -61,6 +61,27 @@ def test_detect_context_overflow_ignores_other_errors():
     assert detect_context_overflow(RuntimeError("connection reset")) is None
 
 
+@pytest.mark.parametrize(
+    "exc",
+    [
+        BadRequestError(
+            message="Invalid 'input': string too long. Expected a string with maximum length 10485760",
+            model="m",
+            llm_provider="openai",
+        ),
+        BadRequestError(
+            message="Guardrail blocked: your text exceeds the maximum number of tokens allowed",
+            model="m",
+            llm_provider="openai",
+        ),
+        RuntimeError("upstream 500: request (9000 tokens) exceeds the available context size (8192 tokens)"),
+    ],
+)
+def test_loose_overflow_wording_is_not_treated_as_overflow(exc):
+    """Only a ContextWindowExceededError or a 400 carrying real token counts may trigger client compaction."""
+    assert detect_context_overflow(exc) is None
+
+
 def test_anthropic_body_matches_the_shape_claude_code_compacts_on():
     body = anthropic_prompt_too_long_body(ContextOverflow(12510, 8192), request_id="req_1")
 

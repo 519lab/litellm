@@ -18,7 +18,6 @@ from fastapi.responses import StreamingResponse
 
 from litellm._uuid import uuid
 from litellm.exceptions import ContextWindowExceededError
-from litellm.litellm_core_utils.exception_mapping_utils import ExceptionCheckers
 
 _TOKEN_PAIR_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"request \((\d+) tokens\) exceeds the available context size \((\d+) tokens\)"), "prompt_first"),
@@ -54,11 +53,10 @@ def _token_counts(error_text: str) -> tuple[int | None, int | None]:
 
 def detect_context_overflow(exc: BaseException) -> ContextOverflow | None:
     error_text = str(getattr(exc, "message", "") or exc)
-    if not isinstance(exc, ContextWindowExceededError) and not ExceptionCheckers.is_error_str_context_window_exceeded(
-        error_text
-    ):
-        return None
     prompt_tokens, context_window = _token_counts(error_text)
+    is_counted_bad_request = getattr(exc, "status_code", None) == 400 and prompt_tokens is not None
+    if not isinstance(exc, ContextWindowExceededError) and not is_counted_bad_request:
+        return None
     return ContextOverflow(prompt_tokens=prompt_tokens, context_window=context_window)
 
 
