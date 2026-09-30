@@ -8,7 +8,7 @@ promoted to `main` and tagged.
 
 ### Added
 
-- Context-window overflows now reach agent clients in the shape they recover from. Claude Code gets Anthropic's `prompt is too long: N tokens > M maximum` error and compacts and continues the session instead of exiting, and streaming Codex requests get `response.failed` with `context_length_exceeded` instead of an opaque invalid-request error. Applies to every model behind the proxy (branch `litellm_compaction_native_overflow`).
+- Context-window overflows now reach agent clients in the shape they recover from. Claude Code gets Anthropic's `prompt is too long: N tokens > M maximum` error and compacts and continues the session instead of exiting, and streaming Codex requests get `response.failed` with `context_length_exceeded` instead of an opaque invalid-request error. Applies to every model behind the proxy (#9).
 
 ### Fixed
 
