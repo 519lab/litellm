@@ -34,6 +34,7 @@ def _get_model():
         if _model is None:
             try:
                 from sentence_transformers import SentenceTransformer
+
                 _model = SentenceTransformer(_MODEL_NAME)
             except ImportError:
                 raise
@@ -73,10 +74,7 @@ def create_embeddings(request: EmbeddingRequest) -> dict:
 
     vectors = model.encode(texts, convert_to_numpy=True)
 
-    data = [
-        {"object": "embedding", "embedding": vec.tolist(), "index": i}
-        for i, vec in enumerate(vectors)
-    ]
+    data = [{"object": "embedding", "embedding": vec.tolist(), "index": i} for i, vec in enumerate(vectors)]
 
     total_tokens = max(1, int(sum(len(t.split()) * 1.3 for t in texts)))
 
