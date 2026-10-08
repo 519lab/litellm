@@ -20,6 +20,10 @@ import pytest
 
 sys.path.insert(0, os.path.abspath("../../../.."))
 
+from litellm.responses.litellm_completion_transformation.conversation_store import (
+    StoredConversation,
+    conversation_key,
+)
 from litellm.responses.litellm_completion_transformation.handler import (
     LiteLLMCompletionTransformationHandler,
 )
@@ -71,3 +75,74 @@ async def test_async_fallback_tags_skip_responses_api_bridge():
             await coro
 
     assert captured.get("_skip_responses_api_bridge") is True
+
+
+class _InMemoryConversationStore:
+    def __init__(self) -> None:
+        self.conversations: dict[str, StoredConversation] = {}
+
+    async def get(self, response_id: str) -> StoredConversation | None:
+        return self.conversations.get(conversation_key(response_id))
+
+    async def put(self, response_id: str, conversation: StoredConversation) -> None:
+        self.conversations[conversation_key(response_id)] = conversation
+
+
+async def _run_turn(handler, text: str, reply: str, stream: bool, **request) -> str:
+    response = await handler.response_api_handler(
+        model="gpt-4o",
+        input=text,
+        responses_api_request=request,
+        custom_llm_provider="openai",
+        _is_async=True,
+        stream=stream,
+        mock_response=reply,
+    )
+    if not stream:
+        return response.id
+    events = [event async for event in response]
+    return next(event.response.id for event in events if event.type == "response.completed")
+
+
+def _transcript(conversation: StoredConversation) -> list[tuple[object, object]]:
+    return [(message.get("role"), message.get("content")) for message in conversation.messages]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stream", [False, True])
+async def test_previous_response_id_rebuilds_history_from_conversation_store(stream: bool):
+    store = _InMemoryConversationStore()
+    handler = LiteLLMCompletionTransformationHandler(conversation_store_provider=lambda: store)
+
+    first_id = await _run_turn(handler, "My name is Zed", "OK", stream)
+    second_id = await _run_turn(handler, "What is my name?", "Zed", stream, previous_response_id=first_id)
+
+    assert _transcript(store.conversations[conversation_key(second_id)]) == [
+        ("user", "My name is Zed"),
+        ("assistant", "OK"),
+        ("user", "What is my name?"),
+        ("assistant", "Zed"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_conversation_store_keeps_session_id_across_turns():
+    store = _InMemoryConversationStore()
+    handler = LiteLLMCompletionTransformationHandler(conversation_store_provider=lambda: store)
+
+    first_id = await _run_turn(handler, "hi", "hello", False)
+    second_id = await _run_turn(handler, "again", "hello again", False, previous_response_id=first_id)
+
+    first_session = store.conversations[conversation_key(first_id)].litellm_session_id
+    assert first_session is not None
+    assert store.conversations[conversation_key(second_id)].litellm_session_id == first_session
+
+
+@pytest.mark.asyncio
+async def test_store_false_skips_conversation_store_write():
+    store = _InMemoryConversationStore()
+    handler = LiteLLMCompletionTransformationHandler(conversation_store_provider=lambda: store)
+
+    await _run_turn(handler, "secret", "OK", False, store=False)
+
+    assert store.conversations == {}
