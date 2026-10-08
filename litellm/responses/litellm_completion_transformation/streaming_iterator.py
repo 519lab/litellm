@@ -903,7 +903,12 @@ class LiteLLMCompletionStreamingIterator(ResponsesAPIStreamingIterator):
             return
         await self._conversation_store.put(
             completed_event.response.id,
-            build_stored_conversation(self._sent_messages, self.litellm_model_response, self._litellm_session_id),
+            build_stored_conversation(
+                self._sent_messages,
+                self.litellm_model_response,
+                self._litellm_session_id,
+                completed_event.response,
+            ),
         )
 
     def __iter__(self):

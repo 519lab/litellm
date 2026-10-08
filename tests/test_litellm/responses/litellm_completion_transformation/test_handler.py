@@ -87,6 +87,9 @@ class _InMemoryConversationStore:
     async def put(self, response_id: str, conversation: StoredConversation) -> None:
         self.conversations[conversation_key(response_id)] = conversation
 
+    async def delete(self, response_id: str) -> bool:
+        return self.conversations.pop(conversation_key(response_id), None) is not None
+
 
 async def _run_turn(handler, text: str, reply: str, stream: bool, **request) -> str:
     response = await handler.response_api_handler(
@@ -146,3 +149,39 @@ async def test_store_false_skips_conversation_store_write():
     await _run_turn(handler, "secret", "OK", False, store=False)
 
     assert store.conversations == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stream", [False, True])
+async def test_stored_response_is_retrievable_listable_and_deletable(stream: bool):
+    store = _InMemoryConversationStore()
+    handler = LiteLLMCompletionTransformationHandler(conversation_store_provider=lambda: store)
+    first_id = await _run_turn(handler, "My name is Zed", "OK", stream)
+    second_id = await _run_turn(handler, "What is my name?", "Zed", stream, previous_response_id=first_id)
+
+    retrieved = await handler.aget_stored_response(second_id)
+    assert retrieved is not None
+    assert retrieved.output[0].content[0].text == "Zed"
+
+    input_items = await handler.alist_stored_input_items(second_id, after=None, before=None, limit=20, order="asc")
+    assert input_items is not None
+    assert [(item["role"], item["content"][0]["text"]) for item in input_items["data"]] == [
+        ("user", "My name is Zed"),
+        ("assistant", "OK"),
+        ("user", "What is my name?"),
+    ]
+
+    delete_result = await handler.adelete_stored_response(second_id)
+    assert delete_result is not None and delete_result.deleted is True
+    assert await handler.aget_stored_response(second_id) is None
+    assert await handler.adelete_stored_response(second_id) is None
+    assert await handler.aget_stored_response(first_id) is not None
+
+
+@pytest.mark.asyncio
+async def test_unknown_response_id_falls_through_to_provider():
+    handler = LiteLLMCompletionTransformationHandler(conversation_store_provider=lambda: _InMemoryConversationStore())
+
+    assert await handler.aget_stored_response("resp_unknown") is None
+    assert await handler.alist_stored_input_items("resp_unknown", None, None, 20, "desc") is None
+    assert await handler.adelete_stored_response("resp_unknown") is None

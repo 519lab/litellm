@@ -5,8 +5,10 @@ from litellm.responses.litellm_completion_transformation.conversation_store impo
     RedisConversationStore,
     StoredConversation,
     build_stored_conversation,
+    stored_input_items,
 )
 from litellm.responses.utils import ResponsesAPIRequestUtils
+from litellm.types.llms.openai import ResponsesAPIResponse
 from litellm.types.utils import ModelResponse
 
 
@@ -21,6 +23,9 @@ class _FakeRedis:
     async def async_set_cache(self, key: str, value: object, ttl: object = None) -> None:
         self.values[key] = value
         self.ttls[key] = ttl
+
+    async def async_delete_cache(self, key: str) -> int:
+        return 1 if self.values.pop(key, None) is not None else 0
 
 
 def _conversation() -> StoredConversation:
@@ -55,8 +60,68 @@ def test_build_stored_conversation_keeps_assistant_tool_calls():
         choices=[{"index": 0, "message": {"role": "assistant", "content": None, "tool_calls": [tool_call]}}]
     )
 
-    conversation = build_stored_conversation([{"role": "user", "content": "look it up"}], model_response, None)
+    conversation = build_stored_conversation(
+        [{"role": "user", "content": "look it up"}], model_response, None, _responses_api_response()
+    )
 
     assistant = conversation.messages[-1]
     assert assistant["role"] == "assistant"
     assert assistant["tool_calls"] == [tool_call]
+
+
+def _responses_api_response() -> ResponsesAPIResponse:
+    return ResponsesAPIResponse(id="chatcmpl-abc", created_at=0, output=[], status="completed")
+
+
+@pytest.mark.asyncio
+async def test_delete_reports_whether_a_conversation_existed():
+    store = RedisConversationStore(redis=_FakeRedis())
+    await store.put("chatcmpl-abc", _conversation())
+
+    assert await store.delete("chatcmpl-abc") is True
+    assert await store.delete("chatcmpl-abc") is False
+    assert await store.get("chatcmpl-abc") is None
+
+
+def _tool_conversation() -> StoredConversation:
+    return StoredConversation(
+        messages=(
+            {"role": "user", "content": "weather?"},
+            {
+                "role": "assistant",
+                "tool_calls": [
+                    {"id": "call_1", "type": "function", "function": {"name": "weather", "arguments": "{}"}}
+                ],
+            },
+            {"role": "tool", "tool_call_id": "call_1", "content": "sunny"},
+            {"role": "assistant", "content": "It is sunny"},
+        ),
+        litellm_session_id=None,
+        input_message_count=3,
+    )
+
+
+def test_input_items_map_tool_calls_and_exclude_the_reply():
+    items = stored_input_items(_tool_conversation(), after=None, before=None, limit=20, order="asc")
+
+    assert [item["type"] for item in items["data"]] == ["message", "function_call", "function_call_output"]
+    assert items["data"][1] == {
+        "id": "msg_1_0",
+        "type": "function_call",
+        "call_id": "call_1",
+        "name": "weather",
+        "arguments": "{}",
+    }
+    assert items["data"][2]["output"] == "sunny"
+
+
+def test_input_items_paginate_in_requested_order():
+    first_page = stored_input_items(_tool_conversation(), after=None, before=None, limit=2, order="desc")
+    second_page = stored_input_items(
+        _tool_conversation(), after=first_page["last_id"], before=None, limit=2, order="desc"
+    )
+
+    assert [item["id"] for item in first_page["data"]] == ["msg_2", "msg_1_0"]
+    assert first_page["has_more"] is True
+    assert [item["id"] for item in second_page["data"]] == ["msg_0"]
+    assert second_page["has_more"] is False
