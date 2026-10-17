@@ -654,6 +654,15 @@ async def delete_response(
         )
 
 
+def _input_items_query_params(request: Request) -> dict[str, str | int | list[str]]:
+    query = request.query_params
+    return {
+        **{key: query[key] for key in ("after", "before", "order") if key in query},
+        **({"limit": int(query["limit"])} if query.get("limit", "").isdigit() else {}),
+        **({"include": query.getlist("include")} if "include" in query else {}),
+    }
+
+
 @router.get(
     "/v1/responses/{response_id}/input_items",
     dependencies=[Depends(user_api_key_auth)],
@@ -691,8 +700,11 @@ async def get_response_input_items(
         version,
     )
 
-    data = await _read_request_body(request=request)
-    data["response_id"] = response_id
+    data = {
+        **await _read_request_body(request=request),
+        **_input_items_query_params(request),
+        "response_id": response_id,
+    }
     processor = ProxyBaseLLMRequestProcessing(data=data)
     try:
         return await processor.base_process_llm_request(

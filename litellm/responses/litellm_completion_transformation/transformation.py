@@ -10,6 +10,7 @@ from typing import Any, Literal, cast
 from openai.types.responses import ResponseFunctionToolCall
 from openai.types.responses.response_create_params import ResponseInputParam
 from openai.types.responses.tool_param import FunctionToolParam
+from pydantic import JsonValue
 from typing_extensions import TypedDict
 
 from litellm._logging import verbose_logger
@@ -18,6 +19,7 @@ from litellm.litellm_core_utils.get_supported_openai_params import (
     get_supported_openai_params,
 )
 from litellm.litellm_core_utils.litellm_logging import Logging as LiteLLMLoggingObj
+from litellm.responses.litellm_completion_transformation.conversation_store import ConversationStore
 from litellm.responses.litellm_completion_transformation.session_handler import (
     ResponsesSessionHandler,
 )
@@ -83,6 +85,7 @@ class ChatCompletionSession(TypedDict, total=False):
         | ChatCompletionMessageToolCall
         | ChatCompletionResponseMessage
         | Message
+        | dict[str, JsonValue]
     ]
     litellm_session_id: str | None
 
@@ -322,12 +325,25 @@ class LiteLLMCompletionResponsesConfig:
     async def async_responses_api_session_handler(
         previous_response_id: str,
         litellm_completion_request: dict,
+        conversation_store: ConversationStore | None = None,
     ) -> dict:
         """
         Async hook to get the chain of previous input and output pairs and return a list of Chat Completion messages
         """
-        chat_completion_session = ChatCompletionSession(messages=[], litellm_session_id=None)
-        if previous_response_id:
+        stored_conversation = (
+            await conversation_store.get(previous_response_id)
+            if conversation_store is not None and previous_response_id
+            else None
+        )
+        chat_completion_session = (
+            ChatCompletionSession(
+                messages=list(stored_conversation.messages),
+                litellm_session_id=stored_conversation.litellm_session_id,
+            )
+            if stored_conversation is not None
+            else ChatCompletionSession(messages=[], litellm_session_id=None)
+        )
+        if previous_response_id and stored_conversation is None:
             chat_completion_session = (
                 await ResponsesSessionHandler.get_chat_completion_message_history_for_previous_response_id(
                     previous_response_id=previous_response_id
