@@ -3550,3 +3550,58 @@ async def test_resolve_user_email_metadata_skips_db_when_no_user_ids(mocker):
 
     assert result == {}
     find_many.assert_not_called()
+
+
+async def _run_user_update(mocker, user_request, caller):
+    from litellm.proxy.management_endpoints.internal_user_endpoints import (
+        _update_single_user_helper,
+    )
+
+    mock_prisma_client = mocker.MagicMock()
+    existing_user = mocker.MagicMock()
+    existing_user.model_dump.return_value = {"user_id": user_request.user_id}
+    existing_user.user_id = user_request.user_id
+    mock_prisma_client.db.litellm_usertable.find_first = mocker.AsyncMock(return_value=existing_user)
+    mock_prisma_client.update_data = mocker.AsyncMock(return_value={"user_id": user_request.user_id})
+    mocker.patch("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
+    mocker.patch(
+        "litellm.proxy.management_endpoints.internal_user_endpoints._schedule_user_update_audit_log",
+        mocker.AsyncMock(),
+    )
+    revoke = mocker.patch(
+        "litellm.proxy.management_endpoints.session_endpoints.revoke_ui_session_keys",
+        mocker.AsyncMock(return_value=1),
+    )
+    await _update_single_user_helper(user_request=user_request, user_api_key_dict=caller)
+    return revoke
+
+
+@pytest.mark.asyncio
+async def test_self_password_change_revokes_other_sessions_but_keeps_the_callers(mocker):
+    caller = UserAPIKeyAuth(user_id="user-1", user_role=LitellmUserRoles.INTERNAL_USER, token="caller-session")
+
+    revoke = await _run_user_update(mocker, UpdateUserRequest(user_id="user-1", password="n3w-pass"), caller)
+
+    revoke.assert_awaited_once()
+    assert revoke.await_args.kwargs["user_id"] == "user-1"
+    assert revoke.await_args.kwargs["keep_hashed_token"] == "caller-session"
+
+
+@pytest.mark.asyncio
+async def test_admin_password_reset_revokes_all_of_the_target_users_sessions(mocker):
+    caller = UserAPIKeyAuth(user_id="admin-1", user_role=LitellmUserRoles.PROXY_ADMIN, token="admin-session")
+
+    revoke = await _run_user_update(mocker, UpdateUserRequest(user_id="user-1", password="r3set"), caller)
+
+    revoke.assert_awaited_once()
+    assert revoke.await_args.kwargs["user_id"] == "user-1"
+    assert revoke.await_args.kwargs["keep_hashed_token"] is None
+
+
+@pytest.mark.asyncio
+async def test_user_update_without_password_does_not_revoke_sessions(mocker):
+    caller = UserAPIKeyAuth(user_id="admin-1", user_role=LitellmUserRoles.PROXY_ADMIN, token="admin-session")
+
+    revoke = await _run_user_update(mocker, UpdateUserRequest(user_id="user-1", user_alias="renamed"), caller)
+
+    revoke.assert_not_awaited()
