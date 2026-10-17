@@ -89,6 +89,7 @@ from litellm.llms.anthropic.experimental_pass_through.context_management import 
     PolyfillResult,
 )
 from litellm.types.llms.anthropic import (
+    ANTHROPIC_HOSTED_TOOLS,
     AllAnthropicToolsValues,
     AnthopicMessagesAssistantMessageParam,
     AnthropicFinishReason,
@@ -264,9 +265,16 @@ class AnthropicAdapter:
         return anthropic_wrapper.anthropic_sse_wrapper()
 
 
+BRIDGE_NATIVE_TOOL_TYPE_PREFIXES: tuple[str, ...] = ("web_search", "computer", "text_editor", "bash")
+ANTHROPIC_BACKEND_NATIVE_TOOL_TYPE_PREFIXES: tuple[str, ...] = (
+    *(hosted_tool.value for hosted_tool in ANTHROPIC_HOSTED_TOOLS),
+    "computer",
+)
+
+
 class LiteLLMAnthropicMessagesAdapter:
-    def __init__(self):
-        pass
+    def __init__(self, native_tool_type_prefixes: tuple[str, ...] = BRIDGE_NATIVE_TOOL_TYPE_PREFIXES) -> None:
+        self._native_tool_type_prefixes = native_tool_type_prefixes
 
     ### FOR [BETA] `/v1/messages` endpoint support
 
@@ -361,15 +369,7 @@ class LiteLLMAnthropicMessagesAdapter:
         tool_name = tool.get("name", "")
         return (isinstance(tool_type, str) and tool_type.startswith("web_search")) or tool_name == "web_search"
 
-    _NATIVE_ANTHROPIC_TOOL_TYPE_PREFIXES: tuple[str, ...] = (
-        "web_search",
-        "computer",
-        "text_editor",
-        "bash",
-    )
-
-    @classmethod
-    def _is_native_anthropic_tool(cls, tool: Dict[str, Any]) -> bool:
+    def _is_native_anthropic_tool(self, tool: Dict[str, Any]) -> bool:
         """Return True for provider-native Anthropic tools (computer_use, web_search, etc.).
 
         These tools have a versioned type string (e.g. "computer_20250124") and must be
@@ -378,7 +378,7 @@ class LiteLLMAnthropicMessagesAdapter:
         """
         tool_type = tool.get("type", "")
         return isinstance(tool_type, str) and any(
-            tool_type.startswith(prefix) for prefix in cls._NATIVE_ANTHROPIC_TOOL_TYPE_PREFIXES
+            tool_type.startswith(prefix) for prefix in self._native_tool_type_prefixes
         )
 
     def translate_anthropic_messages_to_openai(
