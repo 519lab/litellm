@@ -3139,9 +3139,12 @@ agentic_loop_internal_litellm_params = [
     "_code_interpreter_interception_converted_stream",
 ]
 
+ADDRESSED_RESPONSE_ID_FIELD = "_litellm_addressed_response_id"
+
 all_litellm_params = (
     agentic_loop_internal_litellm_params
     + [
+        ADDRESSED_RESPONSE_ID_FIELD,
         "metadata",
         "litellm_metadata",
         "litellm_trace_id",

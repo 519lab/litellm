@@ -24,7 +24,7 @@
     "limit": 42
   },
   "reportExplicitAny": {
-    "limit": 10389
+    "limit": 10388
   },
   "reportFunctionMemberAccess": {
     "limit": 11
@@ -99,13 +99,13 @@
     "limit": 0
   },
   "reportUnknownArgumentType": {
-    "limit": 45894
+    "limit": 45890
   },
   "reportUnknownLambdaType": {
     "limit": 113
   },
   "reportUnknownMemberType": {
-    "limit": 40539
+    "limit": 40535
   },
   "reportUnknownParameterType": {
     "limit": 20403
