@@ -22,6 +22,7 @@ from litellm.proxy.common_request_processing import (
     create_response,
     proxy_exception_from_http_exception,
 )
+from litellm.proxy.common_utils.context_overflow import anthropic_prompt_too_long_body, detect_context_overflow
 from litellm.proxy.common_utils.http_parsing_utils import _read_request_body
 from litellm.types.utils import TokenCountResponse
 
@@ -214,6 +215,14 @@ async def anthropic_response(
 
         if isinstance(e, HTTPException):
             raise proxy_exception_from_http_exception(e, headers)
+
+        overflow = detect_context_overflow(e)
+        if overflow is not None:
+            return JSONResponse(
+                status_code=400,
+                content=anthropic_prompt_too_long_body(overflow, request.headers.get("x-request-id")),
+                headers=headers,
+            )
 
         error_msg = f"{str(e)}"
         raise ProxyException(

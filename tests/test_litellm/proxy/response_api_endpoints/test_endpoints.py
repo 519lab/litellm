@@ -713,6 +713,54 @@ class TestManagedResponsesSameProvider:
         assert "custom_llm_provider" not in call_kwargs
 
 
+_LLAMACPP_OVERFLOW = (
+    '{"error":{"code":400,"message":"request (12510 tokens) exceeds the available context size (8192 tokens), '
+    'try increasing it","type":"exceed_context_size_error"}}'
+)
+
+
+async def _call_responses_with_overflow(stream: bool):
+    import litellm.proxy.proxy_server as proxy_server
+    from litellm.exceptions import ContextWindowExceededError
+    from litellm.proxy.common_request_processing import ProxyBaseLLMRequestProcessing
+    from litellm.proxy.response_api_endpoints.endpoints import responses_api
+
+    exc = ContextWindowExceededError(message=_LLAMACPP_OVERFLOW, model="qwen-local", llm_provider="openai")
+    body = {"model": "qwen-local", "input": "hi", "stream": stream}
+    with (
+        patch.object(proxy_server, "_read_request_body", new=AsyncMock(return_value=body)),
+        patch.object(ProxyBaseLLMRequestProcessing, "base_process_llm_request", new=AsyncMock(side_effect=exc)),
+        patch.object(proxy_server, "proxy_logging_obj") as mock_logging,
+    ):
+        mock_logging.post_call_failure_hook = AsyncMock(return_value=None)
+        mock_logging.post_call_response_headers_hook = AsyncMock(return_value=None)
+        return await responses_api(request=MagicMock(), fastapi_response=MagicMock(), user_api_key_dict=MagicMock())
+
+
+@pytest.mark.asyncio
+async def test_streamed_overflow_becomes_response_failed_context_length_exceeded():
+    """Codex only compacts on a streamed response.failed with context_length_exceeded; a 400 makes it resend."""
+    import json
+
+    response = await _call_responses_with_overflow(stream=True)
+
+    raw = "".join([chunk async for chunk in response.body_iterator])
+    events = [json.loads(line[len("data: ") :]) for line in raw.splitlines() if line.startswith("data: ")]
+    assert response.status_code == 200
+    assert events[-1]["type"] == "response.failed"
+    assert events[-1]["response"]["error"]["code"] == "context_length_exceeded"
+
+
+@pytest.mark.asyncio
+async def test_non_streamed_overflow_keeps_the_http_error():
+    from litellm.proxy._types import ProxyException
+
+    with pytest.raises(ProxyException) as raised:
+        await _call_responses_with_overflow(stream=False)
+
+    assert raised.value.code == "400"
+
+
 def test_input_items_query_params_are_parsed():
     from starlette.requests import Request
 

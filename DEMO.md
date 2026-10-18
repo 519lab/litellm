@@ -134,3 +134,47 @@ banner confirms the replay source.
 
 To try it: go to `/ui/?page=logs`, find a completion row, click the play icon on
 the right side of the row.
+
+---
+
+## compaction-native-overflow — context overflow in the shape agent clients compact on
+
+When the backend rejects a prompt that no longer fits the context window, `/v1/messages`
+now returns Anthropic's 400 `invalid_request_error` `prompt is too long: N tokens > M
+maximum` (the only wording Claude Code compacts and retries on), and a streaming
+`/v1/responses` request gets an HTTP 200 SSE stream ending in `response.failed` with
+`error.code: context_length_exceeded` (the only overflow signal Codex classifies as
+`ContextWindowExceeded`). Detection requires a `ContextWindowExceededError`, or a 400 whose
+text carries prompt and window token counts, so unrelated errors are never rewritten.
+Non-streaming `/v1/responses` keeps its HTTP error. This applies to every deployment behind
+the proxy, not only llama.cpp.
+
+To verify locally with a small window (any GGUF; these steps used Qwen3-1.7B-Q4_K_M):
+
+    docker run -d --rm --name llamacpp-test --gpus all -p 127.0.0.1:56669:8080 \
+      -v "$PWD/models:/models" ghcr.io/ggml-org/llama.cpp:server-cuda \
+      -m /models/Qwen3-1.7B-Q4_K_M.gguf --jinja -c 8192 -np 1 -ngl 99 --alias qwen-test
+
+Point a dev proxy deployment at it (`model: openai/qwen-test`, `api_base:
+http://127.0.0.1:56669/v1`), then send an oversized prompt:
+
+    BIG=$(python3 -c "print('lorem ipsum dolor sit amet ' * 2500)")
+    curl -s localhost:4000/v1/messages -H 'x-api-key: sk-1234' -H 'content-type: application/json' \
+      -d "{\"model\":\"qwen-local\",\"max_tokens\":50,\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"$BIG\"}]}"
+    curl -sN localhost:4000/v1/responses -H 'authorization: Bearer sk-1234' -H 'content-type: application/json' \
+      -d "{\"model\":\"qwen-local\",\"max_output_tokens\":50,\"stream\":true,\"input\":\"$BIG\"}"
+
+The first returns `{"type":"error","error":{"type":"invalid_request_error","message":"prompt
+is too long: 12510 tokens > 8192 maximum"}}` with HTTP 400; the second streams
+`response.created` then `response.failed` with `context_length_exceeded`.
+
+Client check with Claude Code: start llama.cpp with `-c 40960`, run one `claude --bare -p`
+turn through the proxy (`ANTHROPIC_BASE_URL=http://localhost:4000`,
+`ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_MODEL=qwen-local`) whose prompt is about 25k tokens,
+restart llama.cpp with `-c 16384`, then run `claude --bare --continue -p "..."`. On develop
+it exits 1 with the LiteLLM error; with this change the session file gains a
+`compact_boundary` (trigger `auto`) and the turn is answered.
+
+Codex needs its real window configured to compact before overflow (`model_context_window`
+and `model_auto_compact_token_limit`): `codex exec` reports the classified overflow but does
+not compact reactively.
