@@ -5447,6 +5447,9 @@ def request_spend_log_flush() -> None:
     PrismaClient.spend_log_flush_requested.set()
 
 
+MIN_SPEND_LOG_QUEUE_POLL_INTERVAL = 0.1
+
+
 async def _wait_for_spend_log_flush_request(interval: float) -> bool:
     try:
         await asyncio.wait_for(PrismaClient.spend_log_flush_requested.wait(), timeout=interval)
@@ -5476,7 +5479,7 @@ async def _monitor_spend_logs_queue(
     )
 
     threshold = SPEND_LOG_QUEUE_SIZE_THRESHOLD
-    base_interval = SPEND_LOG_QUEUE_POLL_INTERVAL
+    base_interval = max(SPEND_LOG_QUEUE_POLL_INTERVAL, MIN_SPEND_LOG_QUEUE_POLL_INTERVAL)
     max_backoff = 30.0  # Maximum backoff interval in seconds
     backoff_multiplier = 1.5  # Exponential backoff multiplier
     current_interval = base_interval
