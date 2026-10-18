@@ -24,6 +24,7 @@ from litellm.types.llms.anthropic import (
     AnthropicResponseContentBlockText,
     AnthropicResponseContentBlockThinking,
     AnthropicResponseContentBlockToolUse,
+    UsageDelta,
 )
 from litellm.types.llms.anthropic_messages.anthropic_response import (
     AnthropicMessagesResponse,
@@ -32,11 +33,33 @@ from litellm.types.llms.anthropic_messages.anthropic_response import (
 from litellm.types.llms.openai import ResponsesAPIResponse
 
 
+def _usage_field(usage: object, name: str) -> object:
+    if isinstance(usage, dict):
+        return usage.get(name)
+    return getattr(usage, name, None)
+
+
+def _usage_int(usage: object, name: str) -> int:
+    value = _usage_field(usage, name)
+    return value if isinstance(value, int) else 0
+
+
 class LiteLLMAnthropicToResponsesAPIAdapter:
     """
     Converts Anthropic /v1/messages requests to OpenAI Responses API format and
     converts Responses API responses back to Anthropic format.
     """
+
+    @staticmethod
+    def translate_usage_to_anthropic(response: object) -> UsageDelta:
+        usage = _usage_field(response, "usage")
+        cached_tokens = _usage_int(_usage_field(usage, "input_tokens_details"), "cached_tokens")
+        cache_read = UsageDelta(cache_read_input_tokens=cached_tokens) if cached_tokens > 0 else UsageDelta()
+        return UsageDelta(
+            input_tokens=max(_usage_int(usage, "input_tokens") - cached_tokens, 0),
+            output_tokens=_usage_int(usage, "output_tokens"),
+            **cache_read,
+        )
 
     # ------------------------------------------------------------------ #
     # Request translation: Anthropic -> Responses API                     #
@@ -401,8 +424,6 @@ class LiteLLMAnthropicToResponsesAPIAdapter:
             ResponseReasoningItem,
         )
 
-        from litellm.types.llms.openai import ResponseAPIUsage
-
         content: List[Dict[str, Any]] = []
         stop_reason: AnthropicFinishReason = "end_turn"
 
@@ -468,15 +489,7 @@ class LiteLLMAnthropicToResponsesAPIAdapter:
         if response.status == "incomplete":
             stop_reason = "max_tokens"
 
-        # usage
-        raw_usage: Optional[ResponseAPIUsage] = response.usage
-        input_tokens = int(getattr(raw_usage, "input_tokens", 0) or 0)
-        output_tokens = int(getattr(raw_usage, "output_tokens", 0) or 0)
-
-        anthropic_usage = AnthropicUsage(
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-        )
+        anthropic_usage = AnthropicUsage(**self.translate_usage_to_anthropic(response))
 
         return AnthropicMessagesResponse(
             id=response.id,
