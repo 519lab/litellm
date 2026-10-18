@@ -1244,6 +1244,16 @@ def test_ProxyConfig_get_model_info_with_id_returns_router_model_info():
     assert snapshot == {"id": "m-1", "db_model": True, "blocked": False}
 
 
+def test_ProxyConfig_get_model_info_with_id_tolerates_null_model_info_for_premium(monkeypatch):
+    monkeypatch.setattr("litellm.proxy.proxy_server.premium_user", True)
+    model = SimpleNamespace(model_id="db-model-1", model_info=None, created_at=None, updated_at=None)
+
+    info = ProxyConfig().get_model_info_with_id(model=model, db_model=True)
+
+    assert info.id == "db-model-1"
+    assert info.db_model is True
+
+
 def test_ProxyConfig_get_model_info_with_id_missing_model_id_raises():
     pc = ProxyConfig()
     # model with no model_id, no model_info — accessing .model_id will fail.

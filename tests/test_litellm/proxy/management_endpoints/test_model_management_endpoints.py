@@ -2951,6 +2951,7 @@ class TestGetModelInfoWithIdBlocked:
         model.model_id = "dep-1"
         model.model_info = {}
         model.blocked = True
+        model.created_at = model.updated_at = model.created_by = model.updated_by = None
         info = ProxyConfig().get_model_info_with_id(model=model, db_model=True)
         assert info.id == "dep-1"
         assert getattr(info, "blocked") is True

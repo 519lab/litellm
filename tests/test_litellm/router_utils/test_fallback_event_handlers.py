@@ -14,6 +14,8 @@ class StreamingWrapper:
 
 
 class FakeRouter:
+    fallback_access_check = None
+
     def log_retry(self, kwargs, e):
         return kwargs
 
@@ -22,6 +24,8 @@ class FakeRouter:
 
 
 class AlwaysFailRouter:
+    fallback_access_check = None
+
     def log_retry(self, kwargs, e):
         return kwargs
 
@@ -84,6 +88,8 @@ async def test_run_async_fallback_raises_when_all_fallbacks_fail():
 
 
 class RecordingRouter:
+    fallback_access_check = None
+
     def __init__(self):
         self.received_kwargs = None
 

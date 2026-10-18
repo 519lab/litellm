@@ -5183,11 +5183,13 @@ class ProxyConfig:
         """
         _id: Optional[str] = getattr(model, "model_id", None)
         if _id is not None:
+            if not isinstance(model.model_info, dict):
+                model.model_info = {}
             model.model_info["id"] = _id
             model.model_info["db_model"] = True
             model.model_info["blocked"] = bool(getattr(model, "blocked", False))
 
-        if premium_user is True:
+        if premium_user is True and isinstance(model.model_info, dict):
             # seeing "created_at", "updated_at", "created_by", "updated_by" is a LiteLLM Enterprise Feature
             model.model_info["created_at"] = getattr(model, "created_at", None)
             model.model_info["updated_at"] = getattr(model, "updated_at", None)
