@@ -859,6 +859,12 @@ class CustomLogger:  # https://docs.litellm.ai/docs/observability/custom_callbac
         # Only make a shallow copy of the top-level dict to avoid deepcopy issues
         # with complex objects like AuthenticationError that may be present
         model_call_details_copy = copy(model_call_details)
+        if turn_off_message_logging:
+            from litellm.litellm_core_utils.redact_messages import redacted_request_params
+
+            litellm_params = model_call_details.get("litellm_params")
+            if isinstance(litellm_params, dict):
+                model_call_details_copy["litellm_params"] = redacted_request_params(litellm_params)
         standard_logging_object = model_call_details.get("standard_logging_object")
         if standard_logging_object is None:
             return model_call_details_copy

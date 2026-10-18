@@ -4338,3 +4338,40 @@ def test_ui_view_request_response_reads_from_cold_storage(client, monkeypatch):
         assert cold_logger.requested_object_keys == ["k/cold.json"]
     finally:
         app.dependency_overrides.pop(ps.user_api_key_auth, None)
+
+
+@pytest.mark.asyncio
+async def test_ui_view_request_response_custom_logger_rechecks_after_fetch(client, monkeypatch):
+    rows = iter([None, type("ForeignRow", (), {"user": "victim_user", "team_id": None})()])
+
+    class MockSpendLogs:
+        async def find_unique(self, where, include=None):
+            return next(rows)
+
+    class MockDB:
+        def __init__(self):
+            self.litellm_spendlogs = MockSpendLogs()
+
+    class MockPrisma:
+        def __init__(self):
+            self.db = MockDB()
+
+    class LeakyLogger:
+        async def get_request_response_payload(self, request_id, start_time_utc, end_time_utc):
+            return {"messages": [{"role": "user", "content": "victim prompt"}], "response": {"id": "r"}}
+
+    monkeypatch.setattr("litellm.proxy.proxy_server.prisma_client", MockPrisma())
+    monkeypatch.setattr(
+        litellm.logging_callback_manager,
+        "get_active_additional_logging_utils_from_custom_logger",
+        lambda: [LeakyLogger()],
+    )
+    app.dependency_overrides[ps.user_api_key_auth] = lambda: UserAPIKeyAuth(
+        user_role=LitellmUserRoles.INTERNAL_USER, user_id="user_1"
+    )
+    try:
+        response = client.get("/spend/logs/ui/req-racing", headers={"Authorization": "Bearer sk-test"})
+        assert response.status_code == 403
+        assert "victim prompt" not in response.text
+    finally:
+        app.dependency_overrides.pop(ps.user_api_key_auth, None)

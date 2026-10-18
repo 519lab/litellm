@@ -4029,3 +4029,124 @@ def test_response_timing_metrics_survive_deepcopy(logging_obj):
     logging_obj.set_response_timing_metrics({"_response_ms": 12.5})
 
     assert copy.deepcopy(logging_obj).response_timing_metrics == {"_response_ms": 12.5}
+
+
+
+_AWS_SECRET = "wJalrXUtnFEMIK7MDENGbPxRfiCYEXAMPLEKEY"
+_GEMINI_KEY = "AIzaSyC0000000000000000000000000000000"
+
+
+def test_empty_api_base_does_not_dump_call_state(logging_obj):
+    """Direct (non-HTTP) providers pass api_base='', which used to echo model_call_details."""
+    logging_obj.model_call_details["litellm_params"] = {
+        "api_key": "sk-proj-hunter2hunter2hunter2hunter2",
+        "aws_secret_access_key": _AWS_SECRET,
+    }
+
+    curl_command = logging_obj._get_request_curl_command(
+        api_base="",
+        headers={},
+        additional_args={},
+        data={"model": "some-model"},
+    )
+
+    assert "litellm_call_id" not in curl_command
+    assert _AWS_SECRET not in curl_command
+    assert "hunter2" not in curl_command
+
+
+def test_pre_call_redacts_and_masks_raw_request(logging_obj):
+    """log_raw_request_response echoes the request body and api_base back to loggers/UI."""
+    metadata = {"user_api_key_alias": "qa-key"}
+    logging_obj.model_call_details["litellm_params"] = {"metadata": metadata}
+    logging_obj.log_raw_request_response = True
+
+    logging_obj.pre_call(
+        input="hi",
+        api_key="",
+        additional_args={
+            "api_base": f"https://generativelanguage.googleapis.com/v1beta/models/x:generateContent?key={_GEMINI_KEY}",
+            "headers": {},
+            "complete_input_dict": {"aws_secret_access_key": _AWS_SECRET},
+        },
+    )
+
+    raw_request = metadata["raw_request"]
+    assert _AWS_SECRET not in raw_request
+    assert "REDACTED" in raw_request
+
+    raw_api_base = logging_obj.model_call_details["raw_request_typed_dict"]["raw_request_api_base"]
+    assert _GEMINI_KEY not in raw_api_base
+    assert "key=*****" in raw_api_base
+
+
+_PRIVATE_RAW_REQUEST_ARGS = {
+    "api_base": "https://api.openai.com/v1/chat/completions",
+    "headers": {},
+    "complete_input_dict": {"messages": [{"role": "user", "content": "PRIVATE-PHRASE"}]},
+}
+
+
+def _pre_call_with_raw_request_logging(logging_obj) -> dict:
+    metadata = {"user_api_key_alias": "qa-key"}
+    logging_obj.model_call_details["litellm_params"] = {"metadata": metadata}
+    logging_obj.log_raw_request_response = True
+    logging_obj.pre_call(input="hi", api_key="", additional_args=_PRIVATE_RAW_REQUEST_ARGS)
+    return metadata
+
+
+def _assert_raw_request_redacted_for_callbacks_only(logging_obj, metadata: dict) -> None:
+    from litellm.constants import REDACTED_BY_LITELLM
+
+    assert metadata["raw_request"] == REDACTED_BY_LITELLM
+    typed_dict = logging_obj.model_call_details["raw_request_typed_dict"]
+    assert typed_dict["raw_request_body"] == _PRIVATE_RAW_REQUEST_ARGS["complete_input_dict"]
+    assert typed_dict["error"] is None
+
+
+def test_pre_call_raw_request_honors_turn_off_message_logging_set_after_import(logging_obj, monkeypatch):
+    monkeypatch.setattr(litellm, "turn_off_message_logging", True)
+
+    metadata = _pre_call_with_raw_request_logging(logging_obj)
+
+    _assert_raw_request_redacted_for_callbacks_only(logging_obj, metadata)
+
+
+def test_pre_call_raw_request_honors_per_request_turn_off_message_logging(logging_obj, monkeypatch):
+    monkeypatch.setattr(litellm, "turn_off_message_logging", False)
+    logging_obj.model_call_details["standard_callback_dynamic_params"] = {"turn_off_message_logging": True}
+
+    metadata = _pre_call_with_raw_request_logging(logging_obj)
+
+    _assert_raw_request_redacted_for_callbacks_only(logging_obj, metadata)
+
+
+def test_pre_call_raw_request_honors_log_raw_request_response_set_after_import(logging_obj, monkeypatch):
+    monkeypatch.setattr(litellm, "log_raw_request_response", True)
+    metadata = {"user_api_key_alias": "qa-key"}
+    logging_obj.model_call_details["litellm_params"] = {"metadata": metadata}
+    logging_obj.log_raw_request_response = False
+
+    logging_obj.pre_call(input="hi", api_key="", additional_args=_PRIVATE_RAW_REQUEST_ARGS)
+
+    assert "PRIVATE-PHRASE" in metadata["raw_request"]
+
+
+def test_debugging_log_honors_json_logs_set_after_import(logging_obj, monkeypatch):
+    monkeypatch.setattr(litellm, "json_logs", True)
+    logging_obj.litellm_request_debug = True
+
+    with patch("litellm.litellm_core_utils.litellm_logging.verbose_logger.warning") as warning:
+        logging_obj._print_llm_call_debugging_log(api_base="https://api.openai.com/v1", headers={}, additional_args={})
+
+    assert "https://api.openai.com/v1" in warning.call_args.kwargs["extra"]["api_base"]
+
+
+def test_debugging_log_with_json_logs_tolerates_missing_headers(logging_obj, monkeypatch):
+    monkeypatch.setattr(litellm, "json_logs", True)
+    logging_obj.litellm_request_debug = True
+
+    with patch("litellm.litellm_core_utils.litellm_logging.verbose_logger.warning") as warning:
+        logging_obj._print_llm_call_debugging_log(api_base="https://api.openai.com/v1", headers=None, additional_args={})
+
+    assert "https://api.openai.com/v1" in warning.call_args.kwargs["extra"]["api_base"]

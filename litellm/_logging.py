@@ -6,7 +6,7 @@ from datetime import datetime
 from logging import Formatter
 from typing import Any, Dict, Optional
 
-from litellm.litellm_core_utils.secret_redaction import redact_internal_details, redact_string
+from litellm.litellm_core_utils.secret_redaction import redact_internal_details, redact_string, redact_structured_value
 from litellm.litellm_core_utils.safe_json_dumps import safe_dumps
 from litellm.litellm_core_utils.safe_json_loads import safe_json_loads
 
@@ -24,6 +24,12 @@ def _redact_string(value: str) -> str:
     if not _ENABLE_SECRET_REDACTION:
         return value
     return redact_string(value)
+
+
+def _redact_structured_value(key: str | None, value: str) -> str:
+    if not _ENABLE_SECRET_REDACTION:
+        return value
+    return redact_structured_value(key, value)
 
 
 def redact_secrets(value: str) -> str:
@@ -195,7 +201,7 @@ class JsonFormatter(Formatter):
         if record.exc_info:
             json_record["stacktrace"] = record.exc_text or self.formatException(record.exc_info)
 
-        return safe_dumps(json_record)
+        return safe_dumps(json_record, value_transform=_redact_structured_value)
 
 
 # Function to set up exception handlers for JSON logging
