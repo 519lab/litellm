@@ -31,12 +31,7 @@ from httpx import Response
 from pydantic import BaseModel
 
 import litellm
-from litellm import (
-    _custom_logger_compatible_callbacks_literal,
-    json_logs,
-    log_raw_request_response,
-    turn_off_message_logging,
-)
+from litellm import _custom_logger_compatible_callbacks_literal
 from litellm._logging import _is_debugging_on, _redact_string, verbose_logger
 from litellm.exceptions import (
     BudgetExceededError,
@@ -48,6 +43,7 @@ from litellm.batches.batch_utils import _handle_completed_batch
 from litellm.caching.caching import DualCache, InMemoryCache
 from litellm.caching.caching_handler import LLMCachingHandler
 from litellm.constants import (
+    REDACTED_BY_LITELLM,
     DEFAULT_MOCK_RESPONSE_COMPLETION_TOKEN_COUNT,
     DEFAULT_MOCK_RESPONSE_PROMPT_TOKEN_COUNT,
     NON_INFERENCE_CALL_TYPES,
@@ -77,6 +73,7 @@ from litellm.litellm_core_utils.redact_messages import (
     redact_message_input_output_from_custom_logger,
     redact_message_input_output_from_logging,
     redact_streaming_responses_for_custom_logger,
+    should_redact_message_logging,
 )
 from litellm.llms.base_llm.ocr.transformation import OCRResponse
 from litellm.llms.base_llm.search.transformation import SearchResponse
@@ -947,14 +944,20 @@ class Logging(LiteLLMLoggingBaseClass):
                 additional_args=additional_args,
             )
             # log raw request to provider (like LangFuse) -- if opted in.
-            if self.log_raw_request_response is True or log_raw_request_response is True:
+            if self.log_raw_request_response is True or litellm.log_raw_request_response is True:
                 _litellm_params = self.model_call_details.get("litellm_params", {})
                 _metadata = _litellm_params.get("metadata", {}) or {}
                 try:
-                    # [Non-blocking Extra Debug Information in metadata]
-                    if turn_off_message_logging is True:
-                        _metadata["raw_request"] = "redacted by litellm. \
-                            'litellm.turn_off_message_logging=True'"
+                    self.model_call_details["raw_request_typed_dict"] = RawRequestTypedDict(
+                        raw_request_api_base=self._get_masked_api_base(str(additional_args.get("api_base") or "")),
+                        raw_request_body=self._get_raw_request_body(additional_args.get("complete_input_dict", {})),
+                        raw_request_headers=self._get_masked_headers(
+                            additional_args.get("headers", {}) or {},
+                        ),
+                        error=None,
+                    )
+                    if should_redact_message_logging(self.model_call_details):
+                        _metadata["raw_request"] = REDACTED_BY_LITELLM
                     else:
                         curl_command = self._get_request_curl_command(
                             api_base=additional_args.get("api_base", ""),
@@ -962,20 +965,7 @@ class Logging(LiteLLMLoggingBaseClass):
                             additional_args=additional_args,
                             data=additional_args.get("complete_input_dict", {}),
                         )
-
                         _metadata["raw_request"] = _redact_string(str(curl_command))
-                        # split up, so it's easier to parse in the UI
-                        self.model_call_details["raw_request_typed_dict"] = RawRequestTypedDict(
-                            raw_request_api_base=self._get_masked_api_base(str(additional_args.get("api_base") or "")),
-                            raw_request_body=self._get_raw_request_body(additional_args.get("complete_input_dict", {})),
-                            # NOTE: setting ignore_sensitive_headers to True will cause
-                            # the Authorization header to be leaked when calls to the health
-                            # endpoint are made and fail.
-                            raw_request_headers=self._get_masked_headers(
-                                additional_args.get("headers", {}) or {},
-                            ),
-                            error=None,
-                        )
                 except Exception as e:
                     self.model_call_details["raw_request_typed_dict"] = RawRequestTypedDict(
                         error=str(e),
@@ -1074,8 +1064,8 @@ class Logging(LiteLLMLoggingBaseClass):
         Prints the RAW curl command sent from LiteLLM
         """
         if _is_debugging_on() or self.litellm_request_debug:
-            if json_logs:
-                masked_headers = self._get_masked_headers(headers)
+            if litellm.json_logs:
+                masked_headers = self._get_masked_headers(headers or {})
                 masked_api_base = self._get_masked_api_base(str(api_base or ""))
                 if self.litellm_request_debug:
                     verbose_logger.warning(  # .warning ensures this shows up in all environments
@@ -1153,20 +1143,10 @@ class Logging(LiteLLMLoggingBaseClass):
             else:
                 attr = "debug"
 
-            if json_logs:
-                callattr = getattr(verbose_logger, attr)
-                callattr(
-                    "RAW RESPONSE:\n{}\n\n".format(
-                        self.model_call_details.get("original_response", self.model_call_details)
-                    ),
-                )
-            else:
-                callattr = getattr(verbose_logger, attr)
-                callattr(
-                    "RAW RESPONSE:\n{}\n\n".format(
-                        self.model_call_details.get("original_response", self.model_call_details)
-                    )
-                )
+            callattr = getattr(verbose_logger, attr)
+            callattr(
+                "RAW RESPONSE:\n{}\n\n".format(self.model_call_details.get("original_response", self.model_call_details))
+            )
             if getattr(self, "logger_fn", None) and callable(self.logger_fn):
                 try:
                     self.logger_fn(

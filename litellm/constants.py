@@ -1680,3 +1680,4 @@ ADVISOR_TOOL_DESCRIPTION: str = (
     "want to verify your reasoning, or face a complex decision. "
     "Describe your question or challenge clearly in the 'question' field."
 )
+REDACTED_BY_LITELLM = "redacted-by-litellm"
