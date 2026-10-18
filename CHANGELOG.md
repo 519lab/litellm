@@ -12,6 +12,7 @@ promoted to `main` and tagged.
 
 ### Fixed
 
+- With `SPEND_LOG_QUEUE_POLL_INTERVAL=0` the spend log queue monitor never backed off (0 times 1.5 stays 0), so a failing database or lock made it spin in a tight loop logging a traceback on every pass. The poll interval now has a 0.1 second floor. The unit test for that loop had stopped exercising it after the monitor moved from `asyncio.sleep` to an event wait, and it ran away to roughly 25 GB of captured log output during a full proxy test run
 - Responses API ids were only ownership-checked when they arrived in the proxy's encrypted form, so a raw id let another key retrieve, delete, list input items of, or continue someone else's conversation, including the bridged conversations kept in Redis. Non-admin keys addressing an id the proxy did not issue now get 403 unless `general_settings.allow_unmanaged_response_ids` is set, and streamed events no longer expose the raw id (413be2d005)
 - Unclassified 5xx errors returned their raw exception text and a traceback to the client, exposing file paths, private hostnames and IPs and embedded credentials. Client-facing messages are now redacted while server logs keep full detail, and the proxy no longer sends a `Server` header (#18)
 - Logging out of the Admin UI only cleared cookies, so the session key stayed valid until it expired. `POST /session/logout` now revokes it and the dashboard calls it on sign out and worker switch, and a password reset revokes the user's other UI sessions (#18)
