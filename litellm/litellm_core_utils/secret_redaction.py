@@ -24,9 +24,6 @@ def _build_secret_patterns() -> "re.Pattern[str]":
         r"(?:client_secret|azure_password|azure_username)\s+[^\s,'\"})\]{}>]+",
         # AWS access key IDs
         r"(?:AKIA|ASIA)[0-9A-Z]{16}",
-        # AWS secrets / session tokens / access key IDs (key=value)
-        r"(?:aws_secret_access_key|aws_session_token|aws_access_key_id)"
-        r"\s*[:=]\s*[A-Za-z0-9/+=]{20,}",
         # Bearer tokens (OAuth, JWT, etc.)
         r"Bearer\s+[A-Za-z0-9\-._~+/]{10,}=*",
         # Basic auth headers
@@ -61,6 +58,7 @@ def _build_secret_patterns() -> "re.Pattern[str]":
         # private_key with PEM-aware value capture
         r"""private_key['\"]?\s*[:=]\s*['\"]?(?:-----BEGIN[A-Z \-]*PRIVATE KEY-----[\s\S]*?-----END[A-Z \-]*PRIVATE KEY-----|[^\s,'\"})\]{}>]+)""",
         r"(?:master_key|xai_key|database_url|db_url|connection_string|"
+        r"aws_secret_access_key|aws_session_token|aws_access_key_id|"
         r"signing_key|encryption_key|"
         r"auth_token|access_token|refresh_token|"
         r"slack_webhook_url|webhook_url|"
@@ -104,3 +102,12 @@ def redact_internal_details(value: str) -> str:
     marker_index: Final = value.find(_TRACEBACK_MARKER)
     without_traceback: Final = value[:marker_index].rstrip() if marker_index != -1 else value
     return _INTERNAL_DETAIL_RE.sub(_REDACTED, redact_string(without_traceback))
+
+
+def redact_structured_value(key: str | None, value: str) -> str:
+    """Scrub *value* as it appeared under *key* inside a structured record, collapsing only the value."""
+    scrubbed: Final = redact_string(value)
+    if scrubbed != value or key is None:
+        return scrubbed
+    rendered: Final = f"'{key}': '{value}'"
+    return _REDACTED if redact_string(rendered) != rendered else value
