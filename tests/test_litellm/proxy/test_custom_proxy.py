@@ -1,56 +1,50 @@
 import os
-import sys
+from typing import Final
 
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-
-load_dotenv()
-sys.path.insert(
-    0, os.path.abspath("../../..")
-)  # Adds the parent directory to the system path
-
-# Set the SERVER_ROOT_PATH environment variable to match the custom mount path
-os.environ["SERVER_ROOT_PATH"] = "/my-custom-path"
-
-from litellm.proxy.proxy_server import app as litellm_app
-from litellm.proxy.proxy_server import proxy_startup_event
-
-# Create main FastAPI app
-app = FastAPI(title="Custom LiteLLM Server", lifespan=proxy_startup_event)
-
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-custom_path = "/my-custom-path"
-
-# Mount LiteLLM app at /litellm
-app.mount(custom_path, litellm_app)
 
 
-# Default route at /
-@app.get("/")
-async def root():
-    return {
-        "message": "Welcome to the API Gateway",
-        "litellm_endpoint": f"{custom_path}",
-    }
+def build_app() -> FastAPI:
+    load_dotenv()
+    os.environ["SERVER_ROOT_PATH"] = "/my-custom-path"
+
+    from litellm.proxy.proxy_server import app as litellm_app
+    from litellm.proxy.proxy_server import proxy_startup_event
+
+    app: Final = FastAPI(title="Custom LiteLLM Server", lifespan=proxy_startup_event)
+    custom_path: Final = "/my-custom-path"
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    app.mount(custom_path, litellm_app)
+
+    @app.get("/")
+    async def root() -> dict[str, str]:
+        return {
+            "message": "Welcome to the API Gateway",
+            "litellm_endpoint": custom_path,
+        }
+
+    @app.get("/health")
+    async def health_check() -> dict[str, str]:
+        return {"status": "healthy"}
+
+    return app
 
 
-# Health check endpoint
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy"}
 
+def test_importing_this_module_does_not_set_server_root_path() -> None:
+    """A module-level SERVER_ROOT_PATH made every later proxy_server reload rewrite the committed UI build in place"""
+    assert os.environ.get("SERVER_ROOT_PATH") != "/my-custom-path"
 
 if __name__ == "__main__":
-    # Run the server on port 8000
-    uvicorn.run(app, host="0.0.0.0", port=4000, log_level="info")
+    uvicorn.run(build_app(), host="0.0.0.0", port=4000, log_level="info")

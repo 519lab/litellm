@@ -17,6 +17,12 @@ from fastapi.testclient import TestClient
 _PROXY_MODULE_GLOBALS_TO_ISOLATE = (
     "master_key",
     "prisma_client",
+    "proxy_logging_obj",
+    "llm_router",
+    "llm_model_list",
+    "general_settings",
+    "premium_user",
+    "user_api_key_cache",
 )
 
 
@@ -45,32 +51,50 @@ def disconnected_prisma() -> DisconnectedPrisma:
     return DisconnectedPrisma()
 
 
-@pytest.fixture(autouse=True)
-def _isolate_proxy_module_globals():
-    """
-    Snapshot and restore module-level globals on litellm.proxy.proxy_server
-    that tests sometimes mutate via raw setattr (not monkeypatch).
+_SNAPSHOT_SENTINEL = object()
+_proxy_state_snapshots: dict[str, tuple[dict[str, object], dict[object, object], dict[str, str]]] = {}
 
-    Without this, a leaked value — e.g. master_key set by a sibling test —
-    flips the auth short-circuit in user_api_key_auth and causes unrelated
-    tests in the same xdist worker to return 401 instead of 200.
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_setup(item):
+    """
+    Snapshot proxy_server globals, app.dependency_overrides and os.environ before any fixture runs.
+
+    A fixture-based snapshot is restored too early: monkeypatch is set up by a root
+    conftest fixture and torn down after every fixture here, so a test that layers
+    monkeypatch.setattr on top of a module-level patch() of the same global has
+    monkeypatch put the inner mock back last, leaking it into the rest of the worker.
     """
     from litellm.proxy import proxy_server
 
-    sentinel = object()
-    snapshot = {
-        name: getattr(proxy_server, name, sentinel)
-        for name in _PROXY_MODULE_GLOBALS_TO_ISOLATE
-    }
-    try:
-        yield
-    finally:
-        for name, value in snapshot.items():
-            if value is sentinel:
-                if hasattr(proxy_server, name):
-                    delattr(proxy_server, name)
-            else:
-                setattr(proxy_server, name, value)
+    _proxy_state_snapshots[item.nodeid] = (
+        {name: getattr(proxy_server, name, _SNAPSHOT_SENTINEL) for name in _PROXY_MODULE_GLOBALS_TO_ISOLATE},
+        dict(proxy_server.app.dependency_overrides),
+        dict(os.environ),
+    )
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_teardown(item, nextitem):
+    """Restore the snapshot once every fixture, monkeypatch included, has been finalized."""
+    yield
+    snapshot = _proxy_state_snapshots.pop(item.nodeid, None)
+    if snapshot is None:
+        return
+    from litellm.proxy import proxy_server
+
+    module_globals, dependency_overrides, environment = snapshot
+    for name, value in module_globals.items():
+        if value is _SNAPSHOT_SENTINEL:
+            if hasattr(proxy_server, name):
+                delattr(proxy_server, name)
+        else:
+            setattr(proxy_server, name, value)
+    proxy_server.app.dependency_overrides.clear()
+    proxy_server.app.dependency_overrides.update(dependency_overrides)
+    if os.environ != environment:
+        os.environ.clear()
+        os.environ.update(environment)
 
 
 @pytest.fixture(autouse=True)
