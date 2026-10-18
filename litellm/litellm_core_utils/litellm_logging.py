@@ -1145,7 +1145,9 @@ class Logging(LiteLLMLoggingBaseClass):
 
             callattr = getattr(verbose_logger, attr)
             callattr(
-                "RAW RESPONSE:\n{}\n\n".format(self.model_call_details.get("original_response", self.model_call_details))
+                "RAW RESPONSE:\n{}\n\n".format(
+                    self.model_call_details.get("original_response", self.model_call_details)
+                )
             )
             if getattr(self, "logger_fn", None) and callable(self.logger_fn):
                 try:

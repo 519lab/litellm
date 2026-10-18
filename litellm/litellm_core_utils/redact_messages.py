@@ -10,6 +10,7 @@
 import asyncio
 import copy
 import inspect
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Optional
 
 import litellm
@@ -101,6 +102,7 @@ def _redact_choice_content(choice):
             choice.message.reasoning_content = "redacted-by-litellm"
         if hasattr(choice.message, "thinking_blocks"):
             choice.message.thinking_blocks = None
+        _redact_provider_specific_fields(choice.message)
         _redact_tool_calls(getattr(choice.message, "tool_calls", None))
         _redact_function_call(getattr(choice.message, "function_call", None))
     elif isinstance(choice, litellm.utils.StreamingChoices):
@@ -109,8 +111,55 @@ def _redact_choice_content(choice):
             choice.delta.reasoning_content = "redacted-by-litellm"
         if hasattr(choice.delta, "thinking_blocks"):
             choice.delta.thinking_blocks = None
+        _redact_provider_specific_fields(choice.delta)
         _redact_tool_calls(getattr(choice.delta, "tool_calls", None))
         _redact_function_call(getattr(choice.delta, "function_call", None))
+
+
+def _as_mapping(value: object) -> Mapping[str, object] | None:
+    return value if isinstance(value, Mapping) else None
+
+
+def _redacted_provider_specific_fields(fields: Mapping[str, object]) -> Mapping[str, object]:
+    return {
+        **fields,
+        **({"reasoning_content": "redacted-by-litellm"} if fields.get("reasoning_content") is not None else {}),
+        **{key: None for key in ("thinking_blocks", "reasoningContentBlocks", "citations") if key in fields},
+    }
+
+
+def _redact_provider_specific_fields(message: object) -> None:
+    fields = _as_mapping(getattr(message, "provider_specific_fields", None))
+    if fields is not None:
+        setattr(message, "provider_specific_fields", _redacted_provider_specific_fields(fields))
+
+
+def _redact_provider_specific_fields_dict(choice: Mapping[str, object]) -> None:
+    for message in (choice.get("message"), choice.get("delta")):
+        fields = _as_mapping(message.get("provider_specific_fields")) if isinstance(message, dict) else None
+        if isinstance(message, dict) and fields is not None:
+            message["provider_specific_fields"] = _redacted_provider_specific_fields(fields)
+
+
+def _redact_hidden_provider_specific_fields(params: Mapping[str, object]) -> None:
+    for metadata in (params.get("metadata"), params.get("litellm_metadata")):
+        hidden_params = _as_mapping(metadata.get("hidden_params")) if isinstance(metadata, dict) else None
+        fields = _as_mapping(hidden_params.get("provider_specific_fields")) if hidden_params is not None else None
+        if isinstance(metadata, dict) and hidden_params is not None and fields is not None:
+            metadata["hidden_params"] = {
+                **hidden_params,
+                "provider_specific_fields": _redacted_provider_specific_fields(fields),
+            }
+
+
+def redacted_request_params(params: Mapping[str, object]) -> dict[str, object]:
+    request = _as_mapping(params.get("proxy_server_request"))
+    body = _as_mapping(request.get("body")) if request is not None else None
+    if request is None or body is None:
+        return {**params}
+    redacted_body = {**body}
+    perform_redaction(redacted_body, result=None)
+    return {**params, "proxy_server_request": {**request, "body": redacted_body}}
 
 
 def _redact_responses_api_output(output_items):
@@ -204,6 +253,7 @@ def _redact_tool_calls_dict(message: dict, redacted_str: str) -> None:
 def _redact_model_response_dict_choices(choices, redacted_str: str):
     for choice in choices:
         if isinstance(choice, dict):
+            _redact_provider_specific_fields_dict(choice)
             if "message" in choice and isinstance(choice["message"], dict):
                 choice["message"]["content"] = redacted_str
                 if "reasoning_content" in choice["message"]:
@@ -235,6 +285,10 @@ def perform_redaction(model_call_details: dict, result, redact_streaming_respons
     copy via redact_streaming_responses_for_custom_logger instead.
     """
     # Redact model_call_details
+    params = _as_mapping(model_call_details.get("litellm_params"))
+    if params is not None and redact_streaming_responses:
+        _redact_hidden_provider_specific_fields(params)
+        model_call_details["litellm_params"] = redacted_request_params(params)
     model_call_details["messages"] = [{"role": "user", "content": "redacted-by-litellm"}]
     model_call_details["prompt"] = ""
     model_call_details["input"] = ""
