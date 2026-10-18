@@ -754,6 +754,7 @@ class LiteLLMRoutes(enum.Enum):
         "/user/daily/activity",
         "/user/available_roles",  # read-only role metadata; any authenticated user may read
         "/user/list",  # org admins checked in endpoint; non-admins get 403
+        "/session/logout",  # endpoint only ever revokes the caller's own session key
         "/model/{model_id}/update",
         "/prompt/list",
         "/prompt/info",
@@ -1640,6 +1641,10 @@ class UpdateUserRequest(UpdateUserRequestNoUserIDorEmail):
         if values.get("user_id") is None and values.get("user_email") is None:
             raise ValueError("Either user id or user email must be provided")
         return values
+
+
+class SessionLogoutResponse(LiteLLMPydanticObjectBase):
+    message: str
 
 
 class DeleteUserRequest(LiteLLMPydanticObjectBase):

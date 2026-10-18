@@ -3084,3 +3084,37 @@ def test_internal_user_blocked_from_search_tool_writes(route):
     assert "Only proxy admin" in str(exc_info.value)
     assert f"Route={route}" in str(exc_info.value)
     assert "Your role=internal_user" in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "role",
+    [
+        LitellmUserRoles.INTERNAL_USER,
+        LitellmUserRoles.INTERNAL_USER_VIEW_ONLY,
+    ],
+)
+def test_non_admin_ui_users_can_log_out(role):
+    request = MagicMock(spec=Request)
+    request.query_params = {}
+    request.method = "POST"
+
+    RouteChecks.non_proxy_admin_allowed_routes_check(
+        user_obj=LiteLLM_UserTable(user_id="u", user_role=role.value),
+        _user_role=role.value,
+        route="/session/logout",
+        request=request,
+        valid_token=UserAPIKeyAuth(user_id="u", user_role=role.value),
+        request_data={},
+    )
+
+
+def test_proxy_admin_viewer_can_log_out():
+    request = MagicMock(spec=Request)
+    request.method = "POST"
+
+    RouteChecks._check_proxy_admin_viewer_access(
+        route="/session/logout",
+        _user_role=LitellmUserRoles.PROXY_ADMIN_VIEW_ONLY.value,
+        request_data={},
+        request=request,
+    )

@@ -84,7 +84,7 @@
     "limit": 77
   },
   "reportPrivateUsage": {
-    "limit": 2438
+    "limit": 2437
   },
   "reportRedeclaration": {
     "limit": 12
@@ -99,13 +99,13 @@
     "limit": 0
   },
   "reportUnknownArgumentType": {
-    "limit": 45888
+    "limit": 45887
   },
   "reportUnknownLambdaType": {
     "limit": 113
   },
   "reportUnknownMemberType": {
-    "limit": 40535
+    "limit": 40533
   },
   "reportUnknownParameterType": {
     "limit": 20403

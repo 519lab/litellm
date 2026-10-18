@@ -177,6 +177,7 @@ class ProxyInitializationHelpers:
             "app": "litellm.proxy.proxy_server:app",
             "host": host,
             "port": port,
+            "server_header": False,
         }
         if log_config is not None:
             print(f"Using log_config: {log_config}")

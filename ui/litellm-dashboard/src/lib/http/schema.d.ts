@@ -12258,6 +12258,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/session/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Session Logout
+         * @description Revoke the UI session key this request authenticated with.
+         *
+         *     Only accepts UI session keys (minted by dashboard login); any other
+         *     credential is refused, so this can never be used to delete arbitrary keys.
+         *     Revokes only the presented session, not the user's other sessions.
+         *     Idempotent: logging out an already-revoked session succeeds.
+         */
+        post: operations["session_logout_session_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/settings": {
         parameters: {
             query?: never;
@@ -30863,6 +30888,11 @@ export interface components {
             /** Timeout */
             timeout?: number | null;
         };
+        /** SessionLogoutResponse */
+        SessionLogoutResponse: {
+            /** Message */
+            message: string;
+        };
         /**
          * Skill
          * @description Represents a skill from the Anthropic Skills API
@@ -48961,6 +48991,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    session_logout_session_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionLogoutResponse"];
                 };
             };
         };

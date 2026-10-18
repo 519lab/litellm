@@ -7,7 +7,7 @@ secrets from strings without depending on the logging-configuration module.
 """
 
 import re
-from typing import List
+from typing import Final, List
 
 from litellm.constants import MINIMUM_CUSTOM_KEY_LENGTH
 
@@ -83,3 +83,24 @@ _SECRET_RE = _build_secret_patterns()
 def redact_string(value: str) -> str:
     """Scrub known secret/credential patterns from *value* and return the result."""
     return _SECRET_RE.sub(_REDACTED, value)
+
+
+_UNIX_SYSTEM_PATH: Final = r"/(?:etc|var|opt|usr|home|root|private|Users|tmp|mnt|srv)/[^\s'\"\)\]}>,]+"
+_WINDOWS_DRIVE_PATH: Final = r"[A-Za-z]:\\[^\s'\"\)\]}>,]+"
+_PRIVATE_OR_LOOPBACK_IPV4: Final = (
+    r"\b(?:10(?:\.\d{1,3}){3}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}|192\.168(?:\.\d{1,3}){2}|127(?:\.\d{1,3}){3})\b"
+)
+_INTERNAL_SUFFIX_HOSTNAME: Final = r"\b[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.(?:internal|local|corp|lan|intra|private)\b"
+_INTERNAL_DETAIL_RE: Final = re.compile(
+    "|".join((_UNIX_SYSTEM_PATH, _WINDOWS_DRIVE_PATH, _PRIVATE_OR_LOOPBACK_IPV4, _INTERNAL_SUFFIX_HOSTNAME)),
+    re.IGNORECASE,
+)
+_TRACEBACK_MARKER: Final = "Traceback (most recent call last):"
+
+
+def redact_internal_details(value: str) -> str:
+    """Drop an embedded traceback and scrub filesystem paths and internal hostnames,
+    on top of redact_string(). For client-facing messages only: server logs keep this detail."""
+    marker_index: Final = value.find(_TRACEBACK_MARKER)
+    without_traceback: Final = value[:marker_index].rstrip() if marker_index != -1 else value
+    return _INTERNAL_DETAIL_RE.sub(_REDACTED, redact_string(without_traceback))

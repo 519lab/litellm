@@ -373,6 +373,9 @@ from litellm.proxy.management_endpoints.common_utils import (
     _user_has_admin_view,
     admin_can_invite_user,
 )
+from litellm.proxy.management_endpoints.session_endpoints import (
+    router as session_management_router,
+)
 from litellm.proxy.management_endpoints.coordination_redis_endpoints import (
     get_persisted_coordination_redis_settings,
     router as coordination_redis_settings_router,
@@ -13992,6 +13995,13 @@ async def claim_onboarding_link(data: InvitationClaim, request: Request):
             },
         )
 
+    from litellm.proxy.management_endpoints.session_endpoints import revoke_ui_session_keys
+
+    await revoke_ui_session_keys(
+        user_id=invite_obj.user_id,
+        user_api_key_dict=UserAPIKeyAuth(user_id=invite_obj.user_id),
+    )
+
     if user_obj and hasattr(user_obj, "__dict__"):
         user_obj.__dict__.pop("password", None)
 
@@ -16240,6 +16250,7 @@ app.include_router(openai_files_router)
 app.include_router(llm_passthrough_router)
 app.include_router(pass_through_router)
 app.include_router(health_router)
+app.include_router(session_management_router)
 app.include_router(key_management_router)
 app.include_router(internal_user_router)
 app.include_router(team_router)

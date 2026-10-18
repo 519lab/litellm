@@ -18,8 +18,8 @@ import { NotificationsBell } from "@/components/Navbar/NotificationsBell/Notific
 import ViewSwitcher from "@/components/Navbar/ViewSwitcher";
 import WorkerDropdown from "@/components/Navbar/WorkerDropdown/WorkerDropdown";
 import { useWorker } from "@/hooks/useWorker";
-import { clearTokenCookies } from "@/utils/cookieUtils";
-import { clearStoredReturnUrl, getLoginUrl } from "@/utils/returnUrlUtils";
+import { revokeSessionAndClearClientState } from "@/app/(dashboard)/hooks/useLogout";
+import { getLoginUrl } from "@/utils/returnUrlUtils";
 
 interface DashboardHeaderProps {
   page: string;
@@ -31,7 +31,7 @@ export function DashboardHeader({ page }: DashboardHeaderProps) {
   const { title } = getBreadcrumb(page);
   const { isControlPlane, selectedWorker } = useWorker();
   const showWorkerSwitch = isControlPlane && selectedWorker !== null;
-  const { userRole } = useAuthorized();
+  const { userRole, accessToken } = useAuthorized();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const entries = useMemo(() => navEntriesForRole(userRole), [userRole]);
 
@@ -46,11 +46,9 @@ export function DashboardHeader({ page }: DashboardHeaderProps) {
   }, []);
 
   const handleWorkerSwitch = (workerId: string) => {
-    clearTokenCookies();
-    clearStoredReturnUrl();
-    localStorage.removeItem("litellm_selected_worker_id");
-    localStorage.removeItem("litellm_worker_url");
-    window.location.href = `${getLoginUrl()}?worker=${encodeURIComponent(workerId)}`;
+    void revokeSessionAndClearClientState(accessToken).finally(() => {
+      window.location.href = `${getLoginUrl()}?worker=${encodeURIComponent(workerId)}`;
+    });
   };
 
   return (
