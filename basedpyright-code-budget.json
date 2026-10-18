@@ -33,7 +33,7 @@
     "limit": 227
   },
   "reportIncompatibleMethodOverride": {
-    "limit": 78
+    "limit": 77
   },
   "reportIncompatibleVariableOverride": {
     "limit": 12
