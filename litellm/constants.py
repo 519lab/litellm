@@ -6,6 +6,9 @@ from litellm.litellm_core_utils.env_utils import get_env_int, get_env_int_or_non
 
 DEFAULT_HEALTH_CHECK_PROMPT = str(os.getenv("DEFAULT_HEALTH_CHECK_PROMPT", "test from litellm"))
 AZURE_DEFAULT_RESPONSES_API_VERSION = str(os.getenv("AZURE_DEFAULT_RESPONSES_API_VERSION", "preview"))
+LITELLM_RESPONSES_CONVERSATION_TTL_SECONDS = int(
+    os.getenv("LITELLM_RESPONSES_CONVERSATION_TTL_SECONDS", 7 * 24 * 60 * 60)
+)
 ROUTER_MAX_FALLBACKS = int(os.getenv("ROUTER_MAX_FALLBACKS", 5))
 DEFAULT_BATCH_SIZE = int(os.getenv("DEFAULT_BATCH_SIZE", 512))
 DEFAULT_FLUSH_INTERVAL_SECONDS = int(os.getenv("DEFAULT_FLUSH_INTERVAL_SECONDS", 5))
@@ -1677,3 +1680,4 @@ ADVISOR_TOOL_DESCRIPTION: str = (
     "want to verify your reasoning, or face a complex decision. "
     "Describe your question or challenge clearly in the 'question' field."
 )
+REDACTED_BY_LITELLM = "redacted-by-litellm"

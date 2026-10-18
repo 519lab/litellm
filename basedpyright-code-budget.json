@@ -1,6 +1,6 @@
 {
   "reportAny": {
-    "limit": 37484
+    "limit": 37474
   },
   "reportArgumentType": {
     "limit": 2704
@@ -24,7 +24,7 @@
     "limit": 42
   },
   "reportExplicitAny": {
-    "limit": 10389
+    "limit": 10388
   },
   "reportFunctionMemberAccess": {
     "limit": 11
@@ -33,7 +33,7 @@
     "limit": 227
   },
   "reportIncompatibleMethodOverride": {
-    "limit": 78
+    "limit": 77
   },
   "reportIncompatibleVariableOverride": {
     "limit": 12
@@ -84,7 +84,7 @@
     "limit": 77
   },
   "reportPrivateUsage": {
-    "limit": 2438
+    "limit": 2437
   },
   "reportRedeclaration": {
     "limit": 12
@@ -99,13 +99,13 @@
     "limit": 0
   },
   "reportUnknownArgumentType": {
-    "limit": 45894
+    "limit": 45887
   },
   "reportUnknownLambdaType": {
     "limit": 113
   },
   "reportUnknownMemberType": {
-    "limit": 40539
+    "limit": 40533
   },
   "reportUnknownParameterType": {
     "limit": 20403

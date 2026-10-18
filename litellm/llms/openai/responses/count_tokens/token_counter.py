@@ -23,6 +23,9 @@ openai_count_tokens_handler = OpenAICountTokensHandler()
 class OpenAITokenCounter(BaseTokenCounter):
     """Token counter implementation for OpenAI provider using the Responses API."""
 
+    def __init__(self, handler: OpenAICountTokensHandler = openai_count_tokens_handler) -> None:
+        self._handler = handler
+
     def should_use_token_counting_api(
         self,
         custom_llm_provider: Optional[str] = None,
@@ -59,24 +62,25 @@ class OpenAITokenCounter(BaseTokenCounter):
 
         api_base = litellm_params.get("api_base")
 
-        # Convert chat messages to Responses API input format
-        input_items, instructions = OpenAICountTokensConfig.messages_to_responses_input(messages)
-
-        # Use system param if instructions not extracted from messages
-        if instructions is None and system is not None:
-            instructions = system if isinstance(system, str) else str(system)
+        try:
+            input_items, instructions, count_tools = OpenAICountTokensConfig.to_responses_count_request(
+                model=model_to_use, messages=messages, tools=tools, system=system
+            )
+        except (AttributeError, KeyError, TypeError, ValueError) as e:
+            verbose_logger.warning(f"Could not translate request for OpenAI CountTokens API, counting locally: {e}")
+            return None
 
         # If no input items were produced (e.g., system-only messages), fall back to local counting
         if not input_items:
             return None
 
         try:
-            result = await openai_count_tokens_handler.handle_count_tokens_request(
+            result = await self._handler.handle_count_tokens_request(
                 model=model_to_use,
                 input=input_items if input_items is not None else [],
                 api_key=api_key,
                 api_base=api_base,
-                tools=tools,
+                tools=count_tools,
                 instructions=instructions,
             )
 

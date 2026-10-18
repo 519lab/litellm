@@ -827,6 +827,9 @@ class RouteChecks:
                         )
             return
 
+        if route == "/session/logout":
+            return
+
         # Hard-block known write routes regardless of HTTP method (defensive
         # — these are POSTs in practice, but pinning them here protects
         # against future GET-shaped writes).

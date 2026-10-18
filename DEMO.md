@@ -53,25 +53,37 @@ and delete `$HOME/.config/litellm/llamacpp_hook.py`.
 
 ---
 
-## otlp-tracing — OTLP span tracing with TPS and speculative decode metrics
+## otlp-tracing — OTLP span tracing with llama.cpp decode and prompt-cache metrics
 
 Adds `litellm/proxy/hooks/otlp_tracer.py`, a `CustomLogger` hook that emits an
-OpenTelemetry span per LLM call with attributes: `llm.model`, `llm.prompt_tokens`,
-`llm.completion_tokens`, `llm.tpot_ms`, `llm.tps`, `llamacpp.tps`,
-`llamacpp.speculative_acceptance_rate`, `cache.hit`, `error`.
+OpenTelemetry span per LLM call with `llm.model`, token counts,
+`llm.cached_prompt_tokens`, `cache.hit` and `error`, plus `llm.ttft_ms` and decode-window
+`llm.tpot_ms` / `llm.tps` for streamed calls (non-streaming calls have no separate
+first-token time). For non-streaming llama.cpp responses it also records
+`llamacpp.prompt_tps`, `llamacpp.decode_tps`, `llamacpp.tpot_ms`, `llamacpp.cache_n`
+and, when speculative decoding ran, `llamacpp.speculative_acceptance_rate`, all read
+from the `timings` object llama-server puts in the response body. llama-server sends
+no performance headers, and streamed responses keep only the usage fields, so for
+streams the decode speed comes from the proxy's own first-token and end timestamps.
 
-What works: spans are exported via OTLP gRPC to the configured endpoint; llama.cpp
-performance headers are captured automatically; cache hits are flagged.
+Fixed in #4: the first version read invented `x-llamacpp-*` headers, was registered
+through a `make_hook` factory the config loader never calls (every non-streaming
+chat completion then failed with a 400), and misnamed the `cache` pre-call argument
+(every request failed with a 500 once the hook loaded). It had never produced a span.
 
 To enable: set `OTLP_ENDPOINT=http://localhost:4317` (or your collector address)
 and add to `config.yaml`:
 
     callbacks:
-      - litellm.proxy.hooks.otlp_tracer.make_hook
+      - litellm.proxy.hooks.otlp_tracer.proxy_handler_instance
 
-Note: `make_hook` is a callable — the proxy calls it at startup. Do not reference
-`proxy_handler_instance`; that global was removed to avoid import-time gRPC
-connections.
+The exporter is built on the first traced request, so importing the module opens
+no connection.
+
+To verify locally: `docker run -d --rm -p 4317:4317 -p 16686:16686
+jaegertracing/all-in-one:1.62.0`, send one streaming and one non-streaming chat
+completion through the proxy, then `curl -s
+"localhost:16686/api/traces?service=litellm-proxy&limit=10"`.
 
 ---
 

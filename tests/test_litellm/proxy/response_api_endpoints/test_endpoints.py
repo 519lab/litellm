@@ -759,3 +759,24 @@ async def test_non_streamed_overflow_keeps_the_http_error():
         await _call_responses_with_overflow(stream=False)
 
     assert raised.value.code == "400"
+
+
+def test_input_items_query_params_are_parsed():
+    from starlette.requests import Request
+
+    from litellm.proxy.response_api_endpoints.endpoints import _input_items_query_params
+
+    request = Request(
+        {
+            "type": "http",
+            "query_string": b"order=asc&limit=5&after=msg_1&include=a&include=b",
+            "headers": [],
+        }
+    )
+
+    assert _input_items_query_params(request) == {
+        "order": "asc",
+        "after": "msg_1",
+        "limit": 5,
+        "include": ["a", "b"],
+    }
