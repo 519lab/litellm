@@ -1027,6 +1027,17 @@ class TestTranslateResponse:
         assert result["usage"]["input_tokens"] == 200
         assert result["usage"]["output_tokens"] == 75
 
+    def test_cached_input_tokens_mapped_to_cache_read(self):
+        """Backend prompt-cache hits become cache_read_input_tokens, excluded from input_tokens (#3)."""
+        from litellm.types.llms.openai import ResponseAPIUsage
+
+        response = _make_mock_response(output=[_make_output_message(["OK"])])
+        response.usage = ResponseAPIUsage(
+            input_tokens=23, output_tokens=40, total_tokens=63, input_tokens_details={"cached_tokens": 22}
+        )
+        result: Any = _ADAPTER.translate_response(response)
+        assert result["usage"] == {"input_tokens": 1, "output_tokens": 40, "cache_read_input_tokens": 22}
+
     def test_model_and_id_preserved(self):
         """Model and response ID from the Responses API are forwarded."""
         response = _make_mock_response(

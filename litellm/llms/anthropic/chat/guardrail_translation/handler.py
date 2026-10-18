@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, cast
 from litellm._logging import verbose_proxy_logger
 from litellm.llms.anthropic.chat.transformation import AnthropicConfig
 from litellm.llms.anthropic.experimental_pass_through.adapters.transformation import (
+    ANTHROPIC_BACKEND_NATIVE_TOOL_TYPE_PREFIXES,
     LiteLLMAnthropicMessagesAdapter,
 )
 from litellm.llms.base_llm.guardrail_translation.base_translation import BaseTranslation
@@ -71,7 +72,9 @@ class AnthropicMessagesHandler(BaseTranslation):
 
     def __init__(self):
         super().__init__()
-        self.adapter = LiteLLMAnthropicMessagesAdapter()
+        self.adapter = LiteLLMAnthropicMessagesAdapter(
+            native_tool_type_prefixes=ANTHROPIC_BACKEND_NATIVE_TOOL_TYPE_PREFIXES
+        )
 
     @staticmethod
     def _build_streaming_usage_response(
@@ -242,9 +245,9 @@ class AnthropicMessagesHandler(BaseTranslation):
         (
             chat_completion_compatible_request,
             _tool_name_mapping,
-        ) = LiteLLMAnthropicMessagesAdapter().translate_anthropic_to_openai(
-            anthropic_message_request=cast(AnthropicMessagesRequest, data.copy())
-        )
+        ) = LiteLLMAnthropicMessagesAdapter(
+            native_tool_type_prefixes=ANTHROPIC_BACKEND_NATIVE_TOOL_TYPE_PREFIXES
+        ).translate_anthropic_to_openai(anthropic_message_request=cast(AnthropicMessagesRequest, data.copy()))
         return chat_completion_compatible_request
 
     def get_structured_messages(self, data: dict) -> Optional[List[AllMessageValues]]:
