@@ -1,6 +1,6 @@
 # Changelog
 
-Changes to this fork (`ggrace519/litellm`) on top of upstream LiteLLM. Entries accumulate
+Changes to this fork (`519lab/litellm`, formerly `ggrace519/litellm`) on top of upstream LiteLLM. Entries accumulate
 under Unreleased on `develop` and move under a dated version heading when `develop` is
 promoted to `main` and tagged.
 

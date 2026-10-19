@@ -70,10 +70,10 @@ These are fixes, not innovations. Each has a tracking issue and its own branch.
 
 | Issue | Defect | Branch | Proof |
 |---|---|---|---|
-| [#1](https://github.com/ggrace519/litellm/issues/1) | `/v1/messages/count_tokens` drops Anthropic tools, `tool_use` and `tool_result` for `openai/` deployments | `litellm_count_tokens_anthropic_tools` | 2928→4463 and 526→4981, both now equal to llama.cpp's own count |
-| [#2](https://github.com/ggrace519/litellm/issues/2) | The guardrail round trip to an Anthropic backend re-wrapped hosted tools (code_execution, web_fetch, memory, tool_search) as custom tools; the bridge's narrow native set is correct for llama.cpp and OpenAI and is kept, while the guardrail now injects the full hosted set | `litellm_anthropic_native_tool_regression` | guardrail round-trip test red on develop, green on branch; bridge still wraps those tools for non-Anthropic backends |
-| [#3](https://github.com/ggrace519/litellm/issues/3) | Responses bridge drops `cached_tokens` from `/v1/messages` usage | `litellm_responses_bridge_cached_tokens` | `{input_tokens: 23}` → `{input_tokens: 1, cache_read_input_tokens: 22}` |
-| [#4](https://github.com/ggrace519/litellm/issues/4) | OTLP tracer: phantom headers, `make_hook` breaks every non-stream request with a 400, `cache_obj` kwarg makes every request fail with a 500 | `litellm_otlp_tracer_real_llamacpp_metrics` | spans with real `timings` in Jaeger |
+| [#1](https://github.com/519lab/litellm/issues/1) | `/v1/messages/count_tokens` drops Anthropic tools, `tool_use` and `tool_result` for `openai/` deployments | `litellm_count_tokens_anthropic_tools` | 2928→4463 and 526→4981, both now equal to llama.cpp's own count |
+| [#2](https://github.com/519lab/litellm/issues/2) | The guardrail round trip to an Anthropic backend re-wrapped hosted tools (code_execution, web_fetch, memory, tool_search) as custom tools; the bridge's narrow native set is correct for llama.cpp and OpenAI and is kept, while the guardrail now injects the full hosted set | `litellm_anthropic_native_tool_regression` | guardrail round-trip test red on develop, green on branch; bridge still wraps those tools for non-Anthropic backends |
+| [#3](https://github.com/519lab/litellm/issues/3) | Responses bridge drops `cached_tokens` from `/v1/messages` usage | `litellm_responses_bridge_cached_tokens` | `{input_tokens: 23}` → `{input_tokens: 1, cache_read_input_tokens: 22}` |
+| [#4](https://github.com/519lab/litellm/issues/4) | OTLP tracer: phantom headers, `make_hook` breaks every non-stream request with a 400, `cache_obj` kwarg makes every request fail with a 500 | `litellm_otlp_tracer_real_llamacpp_metrics` | spans with real `timings` in Jaeger |
 
 Upstream, not ours: llama.cpp's `/v1/responses` reports `status: completed` when generation
 stops at `max_output_tokens`, so the default `openai/` route returns `stop_reason: end_turn`
