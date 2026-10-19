@@ -178,3 +178,17 @@ it exits 1 with the LiteLLM error; with this change the session file gains a
 Codex needs its real window configured to compact before overflow (`model_context_window`
 and `model_auto_compact_token_limit`): `codex exec` reports the classified overflow but does
 not compact reactively.
+
+---
+
+## Fork environment variables
+
+Environment variables read only by fork code. Upstream's `config_settings.md` lives in
+`BerriAI/litellm-docs` and cannot list them, so `tests/documentation_tests/test_env_keys.py`
+reads this table as well
+
+| Name | Description |
+|------|-------------|
+| LLAMACPP_API_BASE | Base URL the llama.cpp schema hook matches against `api_base` to decide which requests to sanitize. Default `http://127.0.0.1:56669` |
+| LITELLM_RESPONSES_CONVERSATION_TTL_SECONDS | Seconds a Responses API conversation stays in the proxy Redis for `previous_response_id` follow-ups. Default `604800` (7 days) |
+| OTLP_ENDPOINT | gRPC collector address for the OTLP span tracer callback. Default `http://localhost:4317` |
