@@ -13,11 +13,11 @@ permissions:
 jobs:
   check-sync:
     name: Verify schema.prisma copies match root
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 5
     steps:
       - name: Checkout PR
-        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        uses: useblacksmith/checkout@v1 # v4.3.0
         with:
           persist-credentials: false
 
