@@ -9,22 +9,38 @@ import type { LogEntry } from "./columns";
 
 const CHAT_COMPLETION_TYPES = new Set(["completion", "acompletion"]);
 
+function parseMessageArray(raw: string): unknown[] {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function toMessageArray(raw: LogEntry["messages"]): unknown[] {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "string") return parseMessageArray(raw);
+  return [];
+}
+
 export function normalizeMessages(raw: LogEntry["messages"]): MessageType[] {
-  const arr: unknown[] = Array.isArray(raw)
-    ? raw
-    : typeof raw === "string"
-      ? (() => { try { const p = JSON.parse(raw); return Array.isArray(p) ? p : []; } catch { return []; } })()
-      : [];
+  const arr = toMessageArray(raw);
   return arr
-    .filter((m): m is Record<string, unknown> =>
-      m !== null && typeof m === "object" && !Array.isArray(m) &&
-      typeof (m as Record<string, unknown>).role === "string" &&
-      (m as Record<string, unknown>).content != null
+    .filter(
+      (m): m is Record<string, unknown> =>
+        m !== null &&
+        typeof m === "object" &&
+        !Array.isArray(m) &&
+        typeof (m as Record<string, unknown>).role === "string" &&
+        (m as Record<string, unknown>).content != null,
     )
-    .map((m): MessageType => ({
-      role: m.role as string,
-      content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
-    }));
+    .map(
+      (m): MessageType => ({
+        role: m.role as string,
+        content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
+      }),
+    );
 }
 
 export function ReplayButton({ row }: { row: LogEntry }) {
