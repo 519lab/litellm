@@ -20,57 +20,55 @@ _STRIP_KEYS = frozenset(
 )
 
 
+def _child_schemas(schema: dict) -> tuple[Any, ...]:
+    mapped = tuple(
+        sub
+        for key in ("properties", "$defs", "definitions")
+        if isinstance(schema.get(key), dict)
+        for sub in schema[key].values()
+    )
+    listed = tuple(
+        sub
+        for key in ("items", "additionalProperties", "prefixItems", "anyOf", "oneOf", "allOf")
+        if isinstance(schema.get(key), list)
+        for sub in schema[key]
+    )
+    single = tuple(
+        schema[key]
+        for key in ("items", "additionalProperties", "not", "if", "then", "else")
+        if isinstance(schema.get(key), dict)
+    )
+    return mapped + listed + single
+
+
+def _sanitize_node(schema: dict, depth: int) -> bool:
+    stripped = tuple(k for k in _STRIP_KEYS if k in schema)
+    for k in stripped:
+        del schema[k]
+    capped = (
+        tuple(
+            key
+            for key in ("minLength", "maxLength")
+            if isinstance(schema.get(key), int) and schema[key] > _LEN_CAP
+        )
+        if depth > 0
+        else ()
+    )
+    for key in capped:
+        schema[key] = _LEN_CAP
+    return bool(stripped or capped)
+
+
 def _sanitize_schema(schema: dict, depth: int = 0) -> bool:
     """Strip llama.cpp-incompatible JSON Schema keywords in-place. Returns True if any change was made."""
-    if depth > MAX_SCHEMA_DEPTH:
-        return False
-    if not isinstance(schema, dict):
-        return False
     changed = False
-    for k in _STRIP_KEYS:
-        if k in schema:
-            del schema[k]
-            changed = True
-    if depth > 0:
-        for key in ("minLength", "maxLength"):
-            val = schema.get(key)
-            if isinstance(val, int) and val > _LEN_CAP:
-                schema[key] = _LEN_CAP
-                changed = True
-    for key in ("properties", "$defs", "definitions"):
-        if key in schema and isinstance(schema[key], dict):
-            for sub in schema[key].values():
-                if _sanitize_schema(sub, depth + 1):
-                    changed = True
-    for key in ("items", "additionalProperties"):
-        val = schema.get(key)
-        if isinstance(val, dict):
-            if _sanitize_schema(val, depth + 1):
-                changed = True
-        elif isinstance(val, list):
-            for sub in val:
-                if _sanitize_schema(sub, depth + 1):
-                    changed = True
-    prefix = schema.get("prefixItems")
-    if isinstance(prefix, list):
-        for sub in prefix:
-            if _sanitize_schema(sub, depth + 1):
-                changed = True
-    for key in ("anyOf", "oneOf", "allOf"):
-        val = schema.get(key)
-        if isinstance(val, list):
-            for sub in val:
-                if _sanitize_schema(sub, depth + 1):
-                    changed = True
-    not_val = schema.get("not")
-    if isinstance(not_val, dict):
-        if _sanitize_schema(not_val, depth + 1):
-            changed = True
-    for key in ("if", "then", "else"):
-        val = schema.get(key)
-        if isinstance(val, dict):
-            if _sanitize_schema(val, depth + 1):
-                changed = True
+    stack = [(schema, depth)]  # mutable-ok: explicit DFS stack replaces recursion banned by recursive_detector
+    while stack:
+        node, node_depth = stack.pop()
+        if node_depth > MAX_SCHEMA_DEPTH or not isinstance(node, dict):
+            continue
+        changed = _sanitize_node(node, node_depth) or changed
+        stack.extend((sub, node_depth + 1) for sub in _child_schemas(node))
     return changed
 
 
