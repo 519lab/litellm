@@ -40,7 +40,11 @@ jobs:
 
   test-ui:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     defaults:
       run:
         working-directory: ui/litellm-dashboard
@@ -62,4 +66,4 @@ jobs:
         run: npm ci
 
       - name: Run unit tests
-        run: npx vitest run
+        run: npx vitest run --shard=${{ matrix.shard }}/4
