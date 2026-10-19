@@ -28,6 +28,7 @@ EXCLUDED_GUARD_ONLY_VARS = {
 # environment settings docs until the feature is ready for broad use.
 EXCLUDED_ROLLOUT_FLAGS = {
     "LITELLM_USE_RUST_OCR",
+    "LITELLM_USE_LEGACY_INTERACTIONS_SCHEMA",
 }
 
 EXCLUDED_TERMINAL_VARS = {
@@ -124,6 +125,21 @@ except Exception as e:
     raise Exception(
         f"Error reading documentation: {e}, \n repo base - {os.listdir(repo_base)}"
     )
+
+fork_docs_path = "./DEMO.md"
+with open(fork_docs_path, "r", encoding="utf-8") as fork_docs_file:
+    fork_section = re.search(
+        r"## Fork environment variables(.*?)(?=\n## |\Z)",
+        fork_docs_file.read(),
+        re.DOTALL,
+    )
+if fork_section is None:
+    raise Exception(f"'## Fork environment variables' section missing from {fork_docs_path}")
+documented_keys.update(
+    match.group(1)
+    for match in (re.match(r"^\|\s*([A-Z_][A-Z0-9_]*)\s*\|", line) for line in fork_section.group(1).split("\n"))
+    if match
+)
 
 
 print(f"documented_keys: {documented_keys}")
