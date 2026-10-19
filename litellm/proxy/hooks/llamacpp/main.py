@@ -46,11 +46,7 @@ def _sanitize_node(schema: dict, depth: int) -> bool:
     for k in stripped:
         del schema[k]
     capped = (
-        tuple(
-            key
-            for key in ("minLength", "maxLength")
-            if isinstance(schema.get(key), int) and schema[key] > _LEN_CAP
-        )
+        tuple(key for key in ("minLength", "maxLength") if isinstance(schema.get(key), int) and schema[key] > _LEN_CAP)
         if depth > 0
         else ()
     )
