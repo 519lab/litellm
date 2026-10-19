@@ -10,11 +10,14 @@ Each test covers one of the five known llama.cpp grammar-builder failure modes:
   5. response_format.json_schema schemas are sanitized in addition to tool parameters.
 """
 
+import functools
+
 import pytest
 
 from litellm.proxy.hooks.llamacpp.main import (
     LLAMACPP_API_BASE,
     _LEN_CAP,
+    MAX_SCHEMA_DEPTH,
     _sanitize_schema,
     LlamaCppPatternStripper,
 )
@@ -287,3 +290,52 @@ async def test_hook_sanitizes_prefix_items_in_response_format(hook):
     assert result is not None
     items = result["response_format"]["json_schema"]["schema"]["prefixItems"]
     assert "pattern" not in items[0]
+
+
+def _nested_properties(levels: int) -> dict:
+    return functools.reduce(
+        lambda inner, _: {"type": "object", "properties": {"child": inner}},
+        range(levels),
+        {"type": "string", "pattern": "^z$"},
+    )
+
+
+def _leaf(schema: dict) -> dict:
+    return schema if "properties" not in schema else _leaf(schema["properties"]["child"])
+
+
+def test_depth_cap_boundary_is_inclusive():
+    at_cap = _nested_properties(MAX_SCHEMA_DEPTH)
+    past_cap = _nested_properties(MAX_SCHEMA_DEPTH + 1)
+    _sanitize_schema(at_cap)
+    _sanitize_schema(past_cap)
+    assert "pattern" not in _leaf(at_cap)
+    assert _leaf(past_cap)["pattern"] == "^z$"
+
+
+def test_defs_additional_properties_not_and_prefix_items_traversed():
+    schema = {
+        "$defs": {"a": {"pattern": "a"}},
+        "definitions": {"b": {"minimum": 1}},
+        "additionalProperties": {"maximum": 2},
+        "not": {"multipleOf": 3},
+        "prefixItems": [{"exclusiveMinimum": 4}],
+        "oneOf": [{"exclusiveMaximum": 5}],
+        "allOf": [{"pattern": "c"}],
+    }
+    assert _sanitize_schema(schema) is True
+    assert schema == {
+        "$defs": {"a": {}},
+        "definitions": {"b": {}},
+        "additionalProperties": {},
+        "not": {},
+        "prefixItems": [{}],
+        "oneOf": [{}],
+        "allOf": [{}],
+    }
+
+
+def test_sanitize_schema_returns_false_when_untouched():
+    schema = {"type": "object", "properties": {"n": {"type": "string", "maxLength": _LEN_CAP}}}
+    assert _sanitize_schema(schema) is False
+    assert schema["properties"]["n"]["maxLength"] == _LEN_CAP
