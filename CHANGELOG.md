@@ -12,7 +12,7 @@ promoted to `main` and tagged.
 
 ### Changed
 
-- The dashboard toolchain now targets Node 22 (CI workflows, `.nvmrc`, `engines` and `@types/node` 22), which vitest 5 requires. Building the dashboard locally needs Node 22.12 or later (#29).
+- The dashboard toolchain now targets Node 22 (CI workflows, `.nvmrc`, `engines` and `@types/node` 22), which vitest 5 requires. Building the dashboard locally needs Node 22.12 or later (#29). The dashboard request middleware now only rebuilds the request when it rebases the URL, which also sidesteps a vitest 5 jsdom bug that dropped the method and headers of cloned requests
 
 ### Fixed
 

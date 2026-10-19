@@ -222,7 +222,7 @@ describe("useCloudZeroSettings", () => {
   });
 
   it("should use relative URL when proxyBaseUrl is not set", async () => {
-    mockGetProxyBaseUrl.mockReturnValue("");
+    mockGetProxyBaseUrl.mockReturnValueOnce("");
     (fetchSpy as any).mockResolvedValue({
       ok: true,
       json: async () => mockCloudZeroSettings,
@@ -458,7 +458,7 @@ describe("useCloudZeroUpdateSettings", () => {
   });
 
   it("should use relative URL when proxyBaseUrl is not set", async () => {
-    mockGetProxyBaseUrl.mockReturnValue("");
+    mockGetProxyBaseUrl.mockReturnValueOnce("");
     const mockResponse = { message: "Updated", status: "success" };
     (fetchSpy as any).mockResolvedValue({
       ok: true,
@@ -655,7 +655,7 @@ describe("useCloudZeroDeleteSettings", () => {
   });
 
   it("should use relative URL when proxyBaseUrl is not set", async () => {
-    mockGetProxyBaseUrl.mockReturnValue("");
+    mockGetProxyBaseUrl.mockReturnValueOnce("");
     const mockResponse = { message: "Deleted", status: "success" };
     (fetchSpy as any).mockResolvedValue({
       ok: true,
