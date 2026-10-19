@@ -17,7 +17,7 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: useblacksmith/checkout@v1 # v4.3.0
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         # Check out the PR head, not the default refs/pull/N/merge: the merge ref
         # folds in newer base commits, which the diff-based gates (ruff delta,
         # Any-discipline) would otherwise blame on this branch.
@@ -138,7 +138,7 @@ jobs:
       contents: read
 
     steps:
-      - uses: useblacksmith/checkout@v1 # v4.3.0
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -161,7 +161,7 @@ jobs:
       contents: read
 
     steps:
-      - uses: useblacksmith/checkout@v1 # v4.3.0
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           fetch-depth: 0
           persist-credentials: false

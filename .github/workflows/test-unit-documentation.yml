@@ -21,12 +21,12 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - uses: useblacksmith/checkout@v1 # v4.3.0
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           persist-credentials: false
 
       - name: Checkout litellm-docs into docs/my-website (for documentation_tests)
-        uses: useblacksmith/checkout@v1 # v4.3.0
+        uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           repository: BerriAI/litellm-docs
           path: docs/my-website
