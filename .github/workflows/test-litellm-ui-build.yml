@@ -11,6 +11,10 @@ on:
       - litellm_oss_staging
       - "litellm_**"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-ui:
     runs-on: ubuntu-latest

@@ -11,6 +11,10 @@ on:
       - litellm_oss_staging
       - "litellm_**"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test-server-root-path:
     runs-on: ubuntu-latest
@@ -44,6 +48,8 @@ jobs:
           tags: litellm-test:${{ github.sha }}
           load: true
           push: false
+          cache-from: type=gha,scope=server-root-path
+          cache-to: type=gha,mode=max,scope=server-root-path
 
       - name: Start LiteLLM container with SERVER_ROOT_PATH
         run: |
