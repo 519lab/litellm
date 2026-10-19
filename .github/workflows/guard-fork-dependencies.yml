@@ -23,14 +23,14 @@ jobs:
     if: github.event.pull_request.head.repo.full_name != github.repository
     steps:
       - name: Checkout base branch
-        uses: useblacksmith/checkout@v1 # v4.3.0
+        uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           ref: ${{ github.base_ref }}
           persist-credentials: false
           path: base
 
       - name: Checkout PR head (read-only)
-        uses: useblacksmith/checkout@v1 # v4.3.0
+        uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           persist-credentials: false
           path: pr
