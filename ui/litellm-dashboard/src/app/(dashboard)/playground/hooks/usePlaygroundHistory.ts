@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 
 export type PlaygroundRun = {
@@ -51,11 +51,7 @@ function saveRuns(runs: PlaygroundRun[]): void {
 }
 
 export function usePlaygroundHistory() {
-  const [runs, setRuns] = useState<PlaygroundRun[]>([]);
-
-  useEffect(() => {
-    setRuns(loadRuns());
-  }, []);
+  const [runs, setRuns] = useState<PlaygroundRun[]>(loadRuns);
 
   function addRun(run: Omit<PlaygroundRun, "id" | "timestamp">): PlaygroundRun {
     const entry: PlaygroundRun = { ...run, id: uuidv4(), timestamp: Date.now() };

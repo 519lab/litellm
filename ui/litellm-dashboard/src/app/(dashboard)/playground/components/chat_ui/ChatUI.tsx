@@ -173,17 +173,13 @@ const ChatUI: React.FC<ChatUIProps> = ({
     clearMCPEvents,
   } = useChatHistory({ simplified });
 
-  useEffect(() => {
+  const [prevInitialMessages, setPrevInitialMessages] = useState<typeof initialMessages>(undefined);
+  if (initialMessages !== prevInitialMessages) {
+    setPrevInitialMessages(initialMessages);
     if (initialMessages && initialMessages.length > 0) {
       setChatHistory(initialMessages);
     }
-  }, [initialMessages]);
-
-  useEffect(() => {
-    if (initialModel) {
-      setSelectedModel(initialModel);
-    }
-  }, [initialModel]);
+  }
 
   // codeql[js/clear-text-storage-of-sensitive-data]
   const [apiKeySource, setApiKeySource] = useState<"session" | "custom">(() => {
@@ -202,7 +198,17 @@ const ChatUI: React.FC<ChatUIProps> = ({
     () => sessionStorage.getItem("customProxyBaseUrl") || "",
   );
   const [inputMessage, setInputMessage] = useState("");
-  const [selectedModel, setSelectedModel] = useState<string | undefined>(simplified ? fixedModel : (initialModel ?? undefined));
+  const [selectedModel, setSelectedModel] = useState<string | undefined>(
+    simplified ? fixedModel : initialModel ?? undefined,
+  );
+
+  const [prevInitialModel, setPrevInitialModel] = useState(initialModel);
+  if (initialModel !== prevInitialModel) {
+    setPrevInitialModel(initialModel);
+    if (initialModel) {
+      setSelectedModel(initialModel);
+    }
+  }
   const [showCustomModelInput, setShowCustomModelInput] = useState<boolean>(false);
   const [modelInfo, setModelInfo] = useState<ModelGroup[]>([]);
   const [agentInfo, setAgentInfo] = useState<Agent[]>([]);
