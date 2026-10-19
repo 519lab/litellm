@@ -10,6 +10,10 @@ promoted to `main` and tagged.
 
 - Context-window overflows now reach agent clients in the shape they recover from. Claude Code gets Anthropic's `prompt is too long: N tokens > M maximum` error and compacts and continues the session instead of exiting, and streaming Codex requests get `response.failed` with `context_length_exceeded` instead of an opaque invalid-request error. Applies to every model behind the proxy (#9).
 
+### Changed
+
+- The dashboard toolchain now targets Node 22 (CI workflows, `.nvmrc`, `engines` and `@types/node` 22), which vitest 5 requires. Building the dashboard locally needs Node 22.12 or later (#29).
+
 ### Fixed
 
 - A database model row with a null `model_info` crashed the proxy's model loading with `TypeError: 'NoneType' object does not support item assignment`, including the premium-only audit field copy that this fork always runs because the license gate is stripped. It is now treated as an empty `model_info`
