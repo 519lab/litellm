@@ -6,6 +6,10 @@ promoted to `main` and tagged.
 
 ## [Unreleased]
 
+### Fixed
+
+- The Terraform provider now builds against grpc 1.83.2 (GHSA-2v4p-qf9q-27wj, high) and circl 1.6.3 (GHSA-q9hv-hpm4-hj6x, low), clearing the two remaining open Dependabot alerts. The stale Dependabot PRs #47 and #48 could not be rebased, so this replaces them
+
 ## [v1.94.0-fork.1] - 2026-10-19
 
 ### Added
