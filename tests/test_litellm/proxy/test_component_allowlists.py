@@ -101,11 +101,20 @@ def _component_paths(routes, exact_paths, path_prefixes) -> set[str]:
 
 
 def test_gateway_plus_backend_covers_full_app():
-    """Every route on the proxy app must be served by gateway or backend."""
+    """Every eagerly registered route on the proxy app must be served by gateway or backend.
+
+    Lazy-feature routes are excluded: they register on first request, after the
+    component's startup route filter, so whether they are present depends on which
+    earlier tests in the worker happened to load them.
+    """
+    from litellm.proxy._lazy_features import LAZY_FEATURES
+
     all_paths = {
         getattr(r, "path")
         for r in app.router.routes
-        if not isinstance(r, Mount) and getattr(r, "path", None) is not None
+        if not isinstance(r, Mount)
+        and getattr(r, "path", None) is not None
+        and not any(feature.matches(getattr(r, "path")) for feature in LAZY_FEATURES)
     }
     gateway_paths = _component_paths(
         app.router.routes, GATEWAY_EXACT_PATHS, GATEWAY_PATH_PREFIXES

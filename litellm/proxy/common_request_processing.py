@@ -3,7 +3,6 @@ import json
 import logging
 import math
 import time
-import traceback
 from collections.abc import Mapping
 from datetime import datetime
 from typing import (
@@ -27,7 +26,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from starlette.types import Receive, Scope, Send
 
 import litellm
-from litellm._logging import _redact_string, verbose_proxy_logger
+from litellm._logging import redact_internal_details_from_client_message, verbose_proxy_logger
 from litellm._uuid import uuid
 from litellm.constants import (
     DD_TRACER_STREAMING_CHUNK_YIELD_RESOURCE,
@@ -70,7 +69,10 @@ if TYPE_CHECKING:
     ProxyConfig = _ProxyConfig
 else:
     ProxyConfig = Any
-from litellm.proxy.litellm_pre_call_utils import add_litellm_data_to_request
+from litellm.proxy.litellm_pre_call_utils import (
+    add_litellm_data_to_request,
+    reject_url_valued_destination,
+)
 from litellm.types.utils import (
     ModelResponse,
     ModelResponseStream,
@@ -1216,6 +1218,9 @@ class ProxyBaseLLMRequestProcessing:
             if not isinstance(self.data[_metadata_variable_name], dict):
                 self.data[_metadata_variable_name] = {}
             self.data[_metadata_variable_name]["queue_time_seconds"] = queue_time_seconds
+
+        if isinstance(model, str):
+            reject_url_valued_destination("model", model)
 
         self.data["model"] = (
             general_settings.get("completion_model", None)  # server default
@@ -2657,7 +2662,7 @@ class ProxyBaseLLMRequestProcessing:
         else:
             _code = status.HTTP_500_INTERNAL_SERVER_ERROR
         raise ProxyException(
-            message=getattr(e, "message", error_msg),
+            message=redact_internal_details_from_client_message(getattr(e, "message", error_msg)),
             type=getattr(e, "type", "None"),
             param=getattr(e, "param", "None"),
             openai_code=getattr(e, "code", None),
@@ -2850,10 +2855,8 @@ class ProxyBaseLLMRequestProcessing:
 
             if isinstance(e, HTTPException):
                 raise e
-            error_traceback = _redact_string(traceback.format_exc())
-            error_msg = f"{str(e)}\n\n{error_traceback}"
             proxy_exception = ProxyException(
-                message=getattr(e, "message", error_msg),
+                message=redact_internal_details_from_client_message(getattr(e, "message", str(e))),
                 type=getattr(e, "type", "None"),
                 param=getattr(e, "param", "None"),
                 code=getattr(e, "status_code", 500),

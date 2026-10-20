@@ -12,7 +12,7 @@ const rebaseUrl = (requestUrl: string, base: string): string => {
 const middleware: Middleware = {
   onRequest({ request }) {
     const base = getRequestBaseUrl();
-    const next = new Request(base ? rebaseUrl(request.url, base) : request.url, request);
+    const next = base ? new Request(rebaseUrl(request.url, base), request) : request;
     const token = getAuthToken();
     if (token) {
       next.headers.set(getAuthHeaderName(), `Bearer ${token}`);

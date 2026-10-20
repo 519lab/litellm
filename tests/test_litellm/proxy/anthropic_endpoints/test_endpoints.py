@@ -233,3 +233,41 @@ class TestStripTotalTokensFeatureFlag(unittest.TestCase):
         import litellm
 
         assert litellm.strip_anthropic_total_tokens is False
+
+
+class TestContextOverflowIsAnthropicNative:
+    """A backend context overflow must reach Claude Code as Anthropic's
+    prompt-too-long error, the only shape it compacts and retries on."""
+
+    @pytest.mark.asyncio
+    async def test_overflow_returns_anthropic_prompt_too_long(self):
+        import litellm.proxy.anthropic_endpoints.endpoints as ep
+        import litellm.proxy.proxy_server as proxy_server
+        from litellm.exceptions import ContextWindowExceededError
+
+        exc = ContextWindowExceededError(
+            message='{"error":{"code":400,"message":"request (12510 tokens) exceeds the available context size '
+            '(8192 tokens), try increasing it","type":"exceed_context_size_error"}}',
+            model="qwen-local",
+            llm_provider="openai",
+        )
+        request = MagicMock()
+        request.headers = {"x-request-id": "req_42"}
+
+        with (
+            patch.object(ep, "_read_request_body", new=AsyncMock(return_value={"model": "qwen-local"})),
+            patch.object(ep.ProxyBaseLLMRequestProcessing, "base_process_llm_request", new=AsyncMock(side_effect=exc)),
+            patch.object(proxy_server, "proxy_logging_obj") as mock_logging,
+        ):
+            mock_logging.post_call_failure_hook = AsyncMock()
+            response = await ep.anthropic_response(
+                fastapi_response=MagicMock(), request=request, user_api_key_dict=MagicMock()
+            )
+
+        assert response.status_code == 400
+        assert json.loads(response.body) == {
+            "type": "error",
+            "error": {"type": "invalid_request_error", "message": "prompt is too long: 12510 tokens > 8192 maximum"},
+            "request_id": "req_42",
+        }
+        mock_logging.post_call_failure_hook.assert_awaited_once()

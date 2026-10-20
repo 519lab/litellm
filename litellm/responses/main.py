@@ -1170,6 +1170,9 @@ async def adelete_responses(
         decoded_response_id: DecodedResponseId = ResponsesAPIRequestUtils._decode_responses_api_response_id(
             response_id=response_id,
         )
+        stored_delete_result = await litellm_completion_transformation_handler.adelete_stored_response(response_id)
+        if stored_delete_result is not None:
+            return stored_delete_result
         response_id = decoded_response_id.get("response_id") or response_id
         custom_llm_provider = decoded_response_id.get("custom_llm_provider") or custom_llm_provider
 
@@ -1327,6 +1330,7 @@ async def aget_responses(
         decoded_response_id: DecodedResponseId = ResponsesAPIRequestUtils._decode_responses_api_response_id(
             response_id=response_id,
         )
+        stored_response = await litellm_completion_transformation_handler.aget_stored_response(response_id)
         response_id = decoded_response_id.get("response_id") or response_id
         custom_llm_provider = decoded_response_id.get("custom_llm_provider") or custom_llm_provider
 
@@ -1341,14 +1345,17 @@ async def aget_responses(
             **kwargs,
         )
 
-        ctx = contextvars.copy_context()
-        func_with_context = partial(ctx.run, func)
-        init_response = await loop.run_in_executor(None, func_with_context)
-
-        if asyncio.iscoroutine(init_response):
-            response = await init_response
+        if stored_response is not None:
+            response = stored_response
         else:
-            response = init_response
+            ctx = contextvars.copy_context()
+            func_with_context = partial(ctx.run, func)
+            init_response = await loop.run_in_executor(None, func_with_context)
+
+            if asyncio.iscoroutine(init_response):
+                response = await init_response
+            else:
+                response = init_response
 
         # Update the responses_api_response_id with the model_id
         if isinstance(response, ResponsesAPIResponse):
@@ -1491,6 +1498,11 @@ async def alist_input_items(
         loop = asyncio.get_event_loop()
         kwargs["alist_input_items"] = True
 
+        stored_input_items = await litellm_completion_transformation_handler.alist_stored_input_items(
+            response_id, after=after, before=before, limit=limit, order=order
+        )
+        if stored_input_items is not None:
+            return stored_input_items
         decoded_response_id = ResponsesAPIRequestUtils._decode_responses_api_response_id(response_id=response_id)
         response_id = decoded_response_id.get("response_id") or response_id
         custom_llm_provider = decoded_response_id.get("custom_llm_provider") or custom_llm_provider

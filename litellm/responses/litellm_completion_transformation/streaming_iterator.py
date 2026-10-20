@@ -1,9 +1,14 @@
 import time
 import uuid
+from collections.abc import Sequence
 from typing import Any, cast
 
 import litellm
 from litellm.main import stream_chunk_builder
+from litellm.responses.litellm_completion_transformation.conversation_store import (
+    ConversationStore,
+    build_stored_conversation,
+)
 from litellm.responses.litellm_completion_transformation.custom_tools import (
     build_tool_call_item_kwargs,
     extract_custom_tool_names,
@@ -61,7 +66,13 @@ class LiteLLMCompletionStreamingIterator(ResponsesAPIStreamingIterator):
         responses_api_request: ResponsesAPIOptionalRequestParams,
         custom_llm_provider: str | None = None,
         litellm_metadata: dict | None = None,
+        conversation_store: ConversationStore | None = None,
+        sent_messages: Sequence[object] = (),
+        litellm_session_id: str | None = None,
     ):
+        self._conversation_store = conversation_store
+        self._sent_messages = sent_messages
+        self._litellm_session_id = litellm_session_id
         self.model: str = model
         self.litellm_custom_stream_wrapper: litellm.CustomStreamWrapper = litellm_custom_stream_wrapper
         self.request_input: str | ResponseInputParam = request_input
@@ -877,12 +888,28 @@ class LiteLLMCompletionStreamingIterator(ResponsesAPIStreamingIterator):
                         return self._pending_response_events.pop(0)
 
                 except StopAsyncIteration:
-                    return self.common_done_event_logic(sync_mode=False)
+                    done_event = self.common_done_event_logic(sync_mode=False)
+                    if isinstance(done_event, ResponseCompletedEvent):
+                        await self._store_conversation(done_event)
+                    return done_event
 
         except Exception as e:
             # Handle HTTP errors
             self.finished = True
             raise e
+
+    async def _store_conversation(self, completed_event: ResponseCompletedEvent) -> None:
+        if self._conversation_store is None or not isinstance(self.litellm_model_response, ModelResponse):
+            return
+        await self._conversation_store.put(
+            completed_event.response.id,
+            build_stored_conversation(
+                self._sent_messages,
+                self.litellm_model_response,
+                self._litellm_session_id,
+                completed_event.response,
+            ),
+        )
 
     def __iter__(self):
         return self

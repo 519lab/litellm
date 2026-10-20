@@ -23,13 +23,13 @@ concurrency:
 jobs:
   mutation:
     name: Run mutmut
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     # Whole-folder mutation against ~15 files / ~7.5k LOC can take hours.
     # 350 minutes is just under the GitHub-hosted job cap of 360 minutes.
     timeout-minutes: 350
 
     steps:
-      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
         with:
           persist-credentials: false
 

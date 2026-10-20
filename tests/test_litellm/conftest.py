@@ -18,7 +18,9 @@ sys.path.insert(
 )  # Adds the parent directory to the system path
 import asyncio
 
-import litellm
+os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
+
+import litellm  # noqa: E402  # litellm reads LITELLM_LOCAL_MODEL_COST_MAP at import
 from litellm._logging import ALL_LOGGERS
 from litellm.litellm_core_utils.prompt_templates import (
     image_handling as image_handling_module,

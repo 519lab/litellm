@@ -1,0 +1,42 @@
+# Changelog
+
+Changes to this fork (`519lab/litellm`, formerly `ggrace519/litellm`) on top of upstream LiteLLM. Entries accumulate
+under Unreleased on `develop` and move under a dated version heading when `develop` is
+promoted to `main` and tagged.
+
+## [Unreleased]
+
+### Docs
+
+- The fork-only environment variables `LLAMACPP_API_BASE`, `LITELLM_RESPONSES_CONVERSATION_TTL_SECONDS` and `OTLP_ENDPOINT` are now listed in a reference table in `DEMO.md`. `LITELLM_RESPONSES_CONVERSATION_TTL_SECONDS` was not documented anywhere before, and the env-key docs check now fails if a fork variable is missing from that table (#42)
+
+## [v1.94.0-fork.1] - 2026-10-19
+
+### Added
+
+- Context-window overflows now reach agent clients in the shape they recover from. Claude Code gets Anthropic's `prompt is too long: N tokens > M maximum` error and compacts and continues the session instead of exiting, and streaming Codex requests get `response.failed` with `context_length_exceeded` instead of an opaque invalid-request error. Applies to every model behind the proxy (#9).
+
+### Changed
+
+- The dashboard toolchain now targets Node 22 (CI workflows, `.nvmrc`, `engines` and `@types/node` 22), which vitest 5 requires. Building the dashboard locally needs Node 22.12 or later (#29). The dashboard request middleware now only rebuilds the request when it rebases the URL, which also sidesteps a vitest 5 jsdom bug that dropped the method and headers of cloned requests
+
+### Fixed
+
+- Any authenticated key could redirect a provider call to a URL it controls and have the proxy send the operator's stored provider credentials there, or use the proxy for SSRF, by passing `api_base`, `base_url`, `model_list`, `fallbacks` or provider credential fields in the body (including nested inside other fields), path or form data (GHSA-3cv6-jpf6-8222, CVE-2026-84377). The upstream 1.94.3 fix is backported: those parameters are now checked the same way on every input surface, configured deployment parameters win over request overrides, and health connection tests no longer reuse configured credentials when they set their own destination. Clients that relied on overriding connection parameters need `general_settings.allow_client_side_credentials: true` (#43)
+- `npm run build` for the dashboard type checks only app code (`tsconfig.production.json`, as upstream does), so stale test typings no longer fail the build. The UI build, lint and server-root-path workflows now run on PRs into develop, and a new UI unit test job runs the vitest suite there in six shards
+- The proxy Docker images build again: uvloop is locked at 0.22.1, which ships Python 3.14 wheels, instead of 0.21.0, which the Wolfi base image's Python 3.14 had to compile from source and failed on. The Wolfi base image digest is also bumped to one on glibc 2.44, because the current Wolfi `rust` package links an LLVM that needs glibc 2.44 and its `rustc` would not start on the old 2.43 base, which broke the maturin build of the Rust extension
+- A database model row with a null `model_info` crashed the proxy's model loading with `TypeError: 'NoneType' object does not support item assignment`, including the premium-only audit field copy that this fork always runs because the license gate is stripped. It is now treated as an empty `model_info`
+- With `SPEND_LOG_QUEUE_POLL_INTERVAL=0` the spend log queue monitor never backed off (0 times 1.5 stays 0), so a failing database or lock made it spin in a tight loop logging a traceback on every pass. The poll interval now has a 0.1 second floor. The unit test for that loop had stopped exercising it after the monitor moved from `asyncio.sleep` to an event wait, and it ran away to roughly 25 GB of captured log output during a full proxy test run
+- Responses API ids were only ownership-checked when they arrived in the proxy's encrypted form, so a raw id let another key retrieve, delete, list input items of, or continue someone else's conversation, including the bridged conversations kept in Redis. Non-admin keys addressing an id the proxy did not issue now get 403 unless `general_settings.allow_unmanaged_response_ids` is set, and streamed events no longer expose the raw id (413be2d005)
+- Unclassified 5xx errors returned their raw exception text and a traceback to the client, exposing file paths, private hostnames and IPs and embedded credentials. Client-facing messages are now redacted while server logs keep full detail, and the proxy no longer sends a `Server` header (#18)
+- Logging out of the Admin UI only cleared cookies, so the session key stayed valid until it expired. `POST /session/logout` now revokes it and the dashboard calls it on sign out and worker switch, and a password reset revokes the user's other UI sessions (#18)
+- With `turn_off_message_logging` on, callbacks still received the prompt in the nested proxy request body and Anthropic thinking text in provider-specific fields, and `turn_off_message_logging`, `json_logs` and `log_raw_request_response` set in config.yaml were ignored by the raw request logging because they were read at import. JSON log lines also leaked dict and set extras and quoted AWS credentials (#19)
+- The spend log request/response view now re-checks ownership after a custom logger returns a payload (#19)
+- `/v1/messages/count_tokens` under-counted agent conversations on OpenAI-compatible deployments, including the llama.cpp Qwen deployment, because it dropped tool definitions and tool_use / tool_result turns. A Claude Code request was reported as 2928 tokens instead of 4463, and a short tool conversation as 526 instead of 4981. Counts now match the backend exactly (#1).
+- The Anthropic guardrail round trip rewrote hosted Anthropic tools (code_execution, web_fetch, memory, tool_search) into custom tools the Anthropic API rejects. Bridged requests to llama.cpp and OpenAI keep wrapping those tools as functions, which those backends need (#2).
+- `/v1/messages` responses bridged through the Responses API (every `openai/` deployment, including llama.cpp) dropped prompt-cache hits, reporting cached tokens as fresh input and never setting `cache_read_input_tokens`. Claude Code's context meter and cache stats were wrong as a result (#3).
+- The OTLP tracing hook never produced a span: its documented `make_hook` config path failed every non-streaming chat request with a 400, loading it as an instance failed every request with a 500, and its llama.cpp metrics read response headers llama.cpp never sends. Spans now carry llama.cpp's real prompt/decode rates, prompt-cache reuse and draft acceptance. Configs must reference `litellm.proxy.hooks.otlp_tracer.proxy_handler_instance` (#4).
+
+### Docs
+
+- INNOVATIONS.md gains a round-2 section of ranked proposals built from measurements against a real llama.cpp, with round-1 ship status. CLAUDE.md now documents lint and the git identity setup for plain GitHub clones. DEMO.md has verification steps for the tracer and the overflow handling.

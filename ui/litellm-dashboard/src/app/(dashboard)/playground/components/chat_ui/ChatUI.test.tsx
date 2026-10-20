@@ -51,6 +51,20 @@ describe("ChatUI", () => {
     expect(getByText("Test Key")).toBeInTheDocument();
   });
 
+  it("shows replayed messages passed in after mount", async () => {
+    const props = {
+      accessToken: "1234567890",
+      token: "1234567890",
+      userRole: "user",
+      userID: "1234567890",
+      disabledPersonalKeyCreation: false,
+    };
+    const { rerender, findByText, queryByText } = render(<ChatUI {...props} />);
+    expect(queryByText("replayed question")).not.toBeInTheDocument();
+    rerender(<ChatUI {...props} initialMessages={[{ role: "user", content: "replayed question" }]} />);
+    expect(await findByText("replayed question")).toBeInTheDocument();
+  });
+
   it("should show the voice selector when the endpoint type is audio_speech", async () => {
     const { getByText, container } = render(
       <ChatUI

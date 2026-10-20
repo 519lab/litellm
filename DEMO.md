@@ -53,25 +53,37 @@ and delete `$HOME/.config/litellm/llamacpp_hook.py`.
 
 ---
 
-## otlp-tracing — OTLP span tracing with TPS and speculative decode metrics
+## otlp-tracing — OTLP span tracing with llama.cpp decode and prompt-cache metrics
 
 Adds `litellm/proxy/hooks/otlp_tracer.py`, a `CustomLogger` hook that emits an
-OpenTelemetry span per LLM call with attributes: `llm.model`, `llm.prompt_tokens`,
-`llm.completion_tokens`, `llm.tpot_ms`, `llm.tps`, `llamacpp.tps`,
-`llamacpp.speculative_acceptance_rate`, `cache.hit`, `error`.
+OpenTelemetry span per LLM call with `llm.model`, token counts,
+`llm.cached_prompt_tokens`, `cache.hit` and `error`, plus `llm.ttft_ms` and decode-window
+`llm.tpot_ms` / `llm.tps` for streamed calls (non-streaming calls have no separate
+first-token time). For non-streaming llama.cpp responses it also records
+`llamacpp.prompt_tps`, `llamacpp.decode_tps`, `llamacpp.tpot_ms`, `llamacpp.cache_n`
+and, when speculative decoding ran, `llamacpp.speculative_acceptance_rate`, all read
+from the `timings` object llama-server puts in the response body. llama-server sends
+no performance headers, and streamed responses keep only the usage fields, so for
+streams the decode speed comes from the proxy's own first-token and end timestamps.
 
-What works: spans are exported via OTLP gRPC to the configured endpoint; llama.cpp
-performance headers are captured automatically; cache hits are flagged.
+Fixed in #4: the first version read invented `x-llamacpp-*` headers, was registered
+through a `make_hook` factory the config loader never calls (every non-streaming
+chat completion then failed with a 400), and misnamed the `cache` pre-call argument
+(every request failed with a 500 once the hook loaded). It had never produced a span.
 
 To enable: set `OTLP_ENDPOINT=http://localhost:4317` (or your collector address)
 and add to `config.yaml`:
 
     callbacks:
-      - litellm.proxy.hooks.otlp_tracer.make_hook
+      - litellm.proxy.hooks.otlp_tracer.proxy_handler_instance
 
-Note: `make_hook` is a callable — the proxy calls it at startup. Do not reference
-`proxy_handler_instance`; that global was removed to avoid import-time gRPC
-connections.
+The exporter is built on the first traced request, so importing the module opens
+no connection.
+
+To verify locally: `docker run -d --rm -p 4317:4317 -p 16686:16686
+jaegertracing/all-in-one:1.62.0`, send one streaming and one non-streaming chat
+completion through the proxy, then `curl -s
+"localhost:16686/api/traces?service=litellm-proxy&limit=10"`.
 
 ---
 
@@ -122,3 +134,61 @@ banner confirms the replay source.
 
 To try it: go to `/ui/?page=logs`, find a completion row, click the play icon on
 the right side of the row.
+
+---
+
+## compaction-native-overflow — context overflow in the shape agent clients compact on
+
+When the backend rejects a prompt that no longer fits the context window, `/v1/messages`
+now returns Anthropic's 400 `invalid_request_error` `prompt is too long: N tokens > M
+maximum` (the only wording Claude Code compacts and retries on), and a streaming
+`/v1/responses` request gets an HTTP 200 SSE stream ending in `response.failed` with
+`error.code: context_length_exceeded` (the only overflow signal Codex classifies as
+`ContextWindowExceeded`). Detection requires a `ContextWindowExceededError`, or a 400 whose
+text carries prompt and window token counts, so unrelated errors are never rewritten.
+Non-streaming `/v1/responses` keeps its HTTP error. This applies to every deployment behind
+the proxy, not only llama.cpp.
+
+To verify locally with a small window (any GGUF; these steps used Qwen3-1.7B-Q4_K_M):
+
+    docker run -d --rm --name llamacpp-test --gpus all -p 127.0.0.1:56669:8080 \
+      -v "$PWD/models:/models" ghcr.io/ggml-org/llama.cpp:server-cuda \
+      -m /models/Qwen3-1.7B-Q4_K_M.gguf --jinja -c 8192 -np 1 -ngl 99 --alias qwen-test
+
+Point a dev proxy deployment at it (`model: openai/qwen-test`, `api_base:
+http://127.0.0.1:56669/v1`), then send an oversized prompt:
+
+    BIG=$(python3 -c "print('lorem ipsum dolor sit amet ' * 2500)")
+    curl -s localhost:4000/v1/messages -H 'x-api-key: sk-1234' -H 'content-type: application/json' \
+      -d "{\"model\":\"qwen-local\",\"max_tokens\":50,\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"$BIG\"}]}"
+    curl -sN localhost:4000/v1/responses -H 'authorization: Bearer sk-1234' -H 'content-type: application/json' \
+      -d "{\"model\":\"qwen-local\",\"max_output_tokens\":50,\"stream\":true,\"input\":\"$BIG\"}"
+
+The first returns `{"type":"error","error":{"type":"invalid_request_error","message":"prompt
+is too long: 12510 tokens > 8192 maximum"}}` with HTTP 400; the second streams
+`response.created` then `response.failed` with `context_length_exceeded`.
+
+Client check with Claude Code: start llama.cpp with `-c 40960`, run one `claude --bare -p`
+turn through the proxy (`ANTHROPIC_BASE_URL=http://localhost:4000`,
+`ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_MODEL=qwen-local`) whose prompt is about 25k tokens,
+restart llama.cpp with `-c 16384`, then run `claude --bare --continue -p "..."`. On develop
+it exits 1 with the LiteLLM error; with this change the session file gains a
+`compact_boundary` (trigger `auto`) and the turn is answered.
+
+Codex needs its real window configured to compact before overflow (`model_context_window`
+and `model_auto_compact_token_limit`): `codex exec` reports the classified overflow but does
+not compact reactively.
+
+---
+
+## Fork environment variables
+
+Environment variables read only by fork code. Upstream's `config_settings.md` lives in
+`BerriAI/litellm-docs` and cannot list them, so `tests/documentation_tests/test_env_keys.py`
+reads this table as well
+
+| Name | Description |
+|------|-------------|
+| LLAMACPP_API_BASE | Base URL the llama.cpp schema hook matches against `api_base` to decide which requests to sanitize. Default `http://127.0.0.1:56669` |
+| LITELLM_RESPONSES_CONVERSATION_TTL_SECONDS | Seconds a Responses API conversation stays in the proxy Redis for `previous_response_id` follow-ups. Default `604800` (7 days) |
+| OTLP_ENDPOINT | gRPC collector address for the OTLP span tracer callback. Default `http://localhost:4317` |

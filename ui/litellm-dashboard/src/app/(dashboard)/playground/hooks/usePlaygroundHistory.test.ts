@@ -5,7 +5,9 @@ import type { PlaygroundRun } from "./usePlaygroundHistory";
 
 const STORAGE_KEY = "playground_history";
 
-function makeRun(overrides: Partial<Omit<PlaygroundRun, "id" | "timestamp">> = {}): Omit<PlaygroundRun, "id" | "timestamp"> {
+function makeRun(
+  overrides: Partial<Omit<PlaygroundRun, "id" | "timestamp">> = {},
+): Omit<PlaygroundRun, "id" | "timestamp"> {
   return {
     model: overrides.model ?? "test-model",
     messages: overrides.messages ?? [],
@@ -61,13 +63,29 @@ describe("usePlaygroundHistory", () => {
     expect(result.current.runs).toEqual([]);
   });
 
+  it("has stored runs on the first render", () => {
+    const stored: PlaygroundRun = { ...makeRun({ model: "stored-model" }), id: "r1", timestamp: 1 };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([stored]));
+    const runsPerRender: string[][] = [];
+    renderHook(() => {
+      const history = usePlaygroundHistory();
+      runsPerRender.push(history.runs.map((r) => r.id));
+      return history;
+    });
+    expect(runsPerRender).toEqual([["r1"]]);
+  });
+
   it("addRun prepends and persists to localStorage", () => {
     const { result } = renderHook(() => usePlaygroundHistory());
 
     let first: PlaygroundRun;
     let second: PlaygroundRun;
-    act(() => { first = result.current.addRun(makeRun({ model: "a" })); });
-    act(() => { second = result.current.addRun(makeRun({ model: "b" })); });
+    act(() => {
+      first = result.current.addRun(makeRun({ model: "a" }));
+    });
+    act(() => {
+      second = result.current.addRun(makeRun({ model: "b" }));
+    });
 
     expect(result.current.runs[0].model).toBe("b");
     expect(result.current.runs[1].model).toBe("a");
@@ -77,7 +95,9 @@ describe("usePlaygroundHistory", () => {
   it("addRun assigns a unique id and timestamp", () => {
     const { result } = renderHook(() => usePlaygroundHistory());
     let run: PlaygroundRun;
-    act(() => { run = result.current.addRun(makeRun()); });
+    act(() => {
+      run = result.current.addRun(makeRun());
+    });
     expect(typeof run!.id).toBe("string");
     expect(run!.id.length).toBeGreaterThan(0);
     expect(typeof run!.timestamp).toBe("number");
@@ -100,11 +120,19 @@ describe("usePlaygroundHistory", () => {
   it("deleteRun removes the correct entry by id", () => {
     const { result } = renderHook(() => usePlaygroundHistory());
     let a: PlaygroundRun, b: PlaygroundRun, c: PlaygroundRun;
-    act(() => { a = result.current.addRun(makeRun({ model: "a" })); });
-    act(() => { b = result.current.addRun(makeRun({ model: "b" })); });
-    act(() => { c = result.current.addRun(makeRun({ model: "c" })); });
+    act(() => {
+      a = result.current.addRun(makeRun({ model: "a" }));
+    });
+    act(() => {
+      b = result.current.addRun(makeRun({ model: "b" }));
+    });
+    act(() => {
+      c = result.current.addRun(makeRun({ model: "c" }));
+    });
 
-    act(() => { result.current.deleteRun(b!.id); });
+    act(() => {
+      result.current.deleteRun(b!.id);
+    });
 
     const ids = result.current.runs.map((r) => r.id);
     expect(ids).not.toContain(b!.id);
@@ -115,16 +143,24 @@ describe("usePlaygroundHistory", () => {
 
   it("deleteRun is a no-op for unknown id", () => {
     const { result } = renderHook(() => usePlaygroundHistory());
-    act(() => { result.current.addRun(makeRun()); });
+    act(() => {
+      result.current.addRun(makeRun());
+    });
     const countBefore = result.current.runs.length;
-    act(() => { result.current.deleteRun("nonexistent"); });
+    act(() => {
+      result.current.deleteRun("nonexistent");
+    });
     expect(result.current.runs).toHaveLength(countBefore);
   });
 
   it("clearHistory empties state and removes localStorage key", () => {
     const { result } = renderHook(() => usePlaygroundHistory());
-    act(() => { result.current.addRun(makeRun()); });
-    act(() => { result.current.clearHistory(); });
+    act(() => {
+      result.current.addRun(makeRun());
+    });
+    act(() => {
+      result.current.clearHistory();
+    });
 
     expect(result.current.runs).toEqual([]);
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();

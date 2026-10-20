@@ -16,7 +16,7 @@ import asyncio
 import json
 import traceback
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Union, cast
+from typing import Any, Dict, Final, List, Optional, Union, cast
 
 import fastapi
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
@@ -1123,7 +1123,7 @@ def _update_internal_user_params(
 async def _schedule_user_update_audit_log(
     response: Dict[str, Any],
     existing_user_row: Optional[BaseModel],
-    litellm_changed_by: Optional[str],
+    litellm_changed_by: str | None,
     user_api_key_dict: UserAPIKeyAuth,
     litellm_proxy_admin_name: Optional[str],
 ) -> None:
@@ -1193,6 +1193,25 @@ async def _invalidate_user_spend_counter_if_changed(
         from litellm.proxy.proxy_server import _invalidate_spend_counter
 
         await _invalidate_spend_counter(counter_key=f"spend:user:{non_default_values['user_id']}")
+
+
+async def _revoke_sessions_after_password_write(
+    non_default_values: dict[str, Any],
+    user_api_key_dict: UserAPIKeyAuth,
+    litellm_changed_by: str | None,
+) -> None:
+    password_user_id: Final = non_default_values.get("user_id")
+    if "password" not in non_default_values or not isinstance(password_user_id, str):
+        return
+
+    from litellm.proxy.management_endpoints.session_endpoints import revoke_ui_session_keys
+
+    await revoke_ui_session_keys(
+        user_id=password_user_id,
+        user_api_key_dict=user_api_key_dict,
+        keep_hashed_token=user_api_key_dict.token if password_user_id == user_api_key_dict.user_id else None,
+        litellm_changed_by=litellm_changed_by,
+    )
 
 
 async def _update_single_user_helper(
@@ -1313,6 +1332,7 @@ async def _update_single_user_helper(
         )
 
         await _invalidate_user_spend_counter_if_changed(non_default_values)
+        await _revoke_sessions_after_password_write(non_default_values, user_api_key_dict, litellm_changed_by)
 
     if response is None:
         raise HTTPException(

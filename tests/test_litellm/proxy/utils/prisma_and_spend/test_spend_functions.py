@@ -295,28 +295,24 @@ async def test_monitor_spend_logs_queue_invokes_job_when_queue_nonempty(
     assert cancel_after["n"] == 1
 
 
-@pytest.mark.asyncio
-async def test_monitor_spend_logs_queue_swallows_errors_and_backs_off(
+async def _run_monitor_until_third_wait(
     mock_prisma_client: Any,
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """An exception inside the loop is logged with backoff and the loop
-    continues running rather than crashing the monitor task.
-    """
-    import litellm.proxy.utils as utils_mod
+    poll_interval: float,
+) -> list[float]:
     import litellm.constants as constants_mod
+    import litellm.proxy.utils as utils_mod
 
-    monkeypatch.setattr(constants_mod, "SPEND_LOG_QUEUE_POLL_INTERVAL", 0.0, raising=False)
+    monkeypatch.setattr(constants_mod, "SPEND_LOG_QUEUE_POLL_INTERVAL", poll_interval, raising=False)
+    waits: list[float] = []
 
-    sleep_count = {"n": 0}
-
-    async def _short_sleep(_: float, *args: Any, **kwargs: Any) -> None:
-        sleep_count["n"] += 1
-        if sleep_count["n"] >= 3:
+    async def _recording_wait(interval: float) -> bool:
+        waits.append(interval)
+        if len(waits) >= 3:
             raise asyncio.CancelledError()
+        return False
 
-    monkeypatch.setattr(utils_mod.asyncio, "sleep", _short_sleep)
-    proxy_logging = MagicMock()
+    monkeypatch.setattr(utils_mod, "_wait_for_spend_log_flush_request", _recording_wait)
 
     bad_lock = MagicMock()
     bad_lock.__aenter__ = AsyncMock(side_effect=RuntimeError("lock broken"))
@@ -327,9 +323,32 @@ async def test_monitor_spend_logs_queue_swallows_errors_and_backs_off(
         await _monitor_spend_logs_queue(
             prisma_client=mock_prisma_client,
             db_writer_client=None,
-            proxy_logging_obj=proxy_logging,
+            proxy_logging_obj=MagicMock(),
         )
-    assert sleep_count["n"] == 3
+    return waits
+
+
+@pytest.mark.asyncio
+async def test_monitor_spend_logs_queue_swallows_errors_and_backs_off(
+    mock_prisma_client: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An exception inside the loop is logged and the loop keeps running, waiting a little longer each time."""
+    waits = await _run_monitor_until_third_wait(mock_prisma_client, monkeypatch, poll_interval=2.0)
+
+    assert waits == [3.0, 4.5, 6.75]
+
+
+@pytest.mark.asyncio
+async def test_monitor_spend_logs_queue_never_busy_loops_with_zero_poll_interval(
+    mock_prisma_client: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A zero poll interval used to pin the backoff at 0 (0 * 1.5), so a failing loop spun without ever waiting."""
+    waits = await _run_monitor_until_third_wait(mock_prisma_client, monkeypatch, poll_interval=0.0)
+
+    assert all(wait > 0 for wait in waits)
+    assert waits[0] < waits[1] < waits[2]
 
 
 def test_raise_failed_update_spend_exception_emits_failure_handler() -> None:

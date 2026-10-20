@@ -4,8 +4,9 @@
 the environment at import time in
 ``litellm.proxy._experimental.mcp_server.utils`` and must flow through to every
 consumer, including the well-known registry entry built in
-``mcp_management_endpoints``. The env values are reloaded into the modules and
-restored afterwards so the override does not leak into other tests.
+``mcp_management_endpoints``. The env values are reloaded into the modules, and each module's original
+namespace is put back afterwards, so modules that imported names from them
+(the MCP server manager raising MCPMissingUserEnvVarsError) keep matching.
 """
 
 import contextlib
@@ -31,17 +32,17 @@ def _env_and_reload(**env):
             else:
                 os.environ[key] = value
 
-    def _reload():
-        utils = importlib.reload(importlib.import_module(UTILS_MODULE))
-        mgmt = importlib.reload(importlib.import_module(MGMT_MODULE))
-        return utils, mgmt
+    modules = tuple(importlib.import_module(name) for name in (UTILS_MODULE, MGMT_MODULE))
+    namespaces = tuple(dict(vars(module)) for module in modules)
 
     try:
         _apply_env(env)
-        yield _reload()
+        yield tuple(importlib.reload(module) for module in modules)
     finally:
         _apply_env(saved)
-        _reload()
+        for module, namespace in zip(modules, namespaces):
+            vars(module).clear()
+            vars(module).update(namespace)
 
 
 def test_defaults_used_when_env_unset():

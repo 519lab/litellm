@@ -373,6 +373,9 @@ from litellm.proxy.management_endpoints.common_utils import (
     _user_has_admin_view,
     admin_can_invite_user,
 )
+from litellm.proxy.management_endpoints.session_endpoints import (
+    router as session_management_router,
+)
 from litellm.proxy.management_endpoints.coordination_redis_endpoints import (
     get_persisted_coordination_redis_settings,
     router as coordination_redis_settings_router,
@@ -5180,11 +5183,13 @@ class ProxyConfig:
         """
         _id: Optional[str] = getattr(model, "model_id", None)
         if _id is not None:
+            if not isinstance(model.model_info, dict):
+                model.model_info = {}
             model.model_info["id"] = _id
             model.model_info["db_model"] = True
             model.model_info["blocked"] = bool(getattr(model, "blocked", False))
 
-        if premium_user is True:
+        if premium_user is True and isinstance(model.model_info, dict):
             # seeing "created_at", "updated_at", "created_by", "updated_by" is a LiteLLM Enterprise Feature
             model.model_info["created_at"] = getattr(model, "created_at", None)
             model.model_info["updated_at"] = getattr(model, "updated_at", None)
@@ -13992,6 +13997,13 @@ async def claim_onboarding_link(data: InvitationClaim, request: Request):
             },
         )
 
+    from litellm.proxy.management_endpoints.session_endpoints import revoke_ui_session_keys
+
+    await revoke_ui_session_keys(
+        user_id=invite_obj.user_id,
+        user_api_key_dict=UserAPIKeyAuth(user_id=invite_obj.user_id),
+    )
+
     if user_obj and hasattr(user_obj, "__dict__"):
         user_obj.__dict__.pop("password", None)
 
@@ -16240,6 +16252,7 @@ app.include_router(openai_files_router)
 app.include_router(llm_passthrough_router)
 app.include_router(pass_through_router)
 app.include_router(health_router)
+app.include_router(session_management_router)
 app.include_router(key_management_router)
 app.include_router(internal_user_router)
 app.include_router(team_router)

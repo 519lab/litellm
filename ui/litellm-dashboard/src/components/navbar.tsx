@@ -4,9 +4,8 @@ import { useDisableShowPrompts } from "@/app/(dashboard)/hooks/useDisableShowPro
 import { useWorker } from "@/hooks/useWorker";
 import { getProxyBaseUrl } from "@/components/networking";
 import { useTheme } from "@/contexts/ThemeContext";
-import { clearTokenCookies } from "@/utils/cookieUtils";
-import { clearStoredReturnUrl, getLoginUrl } from "@/utils/returnUrlUtils";
-import useProxySettings from "@/app/(dashboard)/hooks/proxySettings/useProxySettings";
+import { revokeSessionAndClearClientState, useLogout } from "@/app/(dashboard)/hooks/useLogout";
+import { getLoginUrl } from "@/utils/returnUrlUtils";
 import { DownOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from "@ant-design/icons";
 import { Tag } from "antd";
 import Link from "next/link";
@@ -33,7 +32,6 @@ const Navbar: React.FC<NavbarProps> = ({
   onToggleSidebar,
 }) => {
   const baseUrl = getProxyBaseUrl();
-  const proxySettings = useProxySettings(accessToken);
   const { logoUrl } = useTheme();
   const { data: healthData } = useHealthReadinessDetails(accessToken);
   const version = healthData?.litellm_version;
@@ -44,19 +42,12 @@ const Navbar: React.FC<NavbarProps> = ({
 
   const imageUrl = logoUrl || `${baseUrl}/get_image`;
 
-  const handleLogout = () => {
-    clearTokenCookies();
-    localStorage.removeItem("litellm_selected_worker_id");
-    localStorage.removeItem("litellm_worker_url");
-    window.location.href = proxySettings.PROXY_LOGOUT_URL || "";
-  };
+  const handleLogout = useLogout(accessToken);
 
   const handleWorkerSwitch = (workerId: string) => {
-    clearTokenCookies();
-    clearStoredReturnUrl();
-    localStorage.removeItem("litellm_selected_worker_id");
-    localStorage.removeItem("litellm_worker_url");
-    window.location.href = `${getLoginUrl()}?worker=${encodeURIComponent(workerId)}`;
+    void revokeSessionAndClearClientState(accessToken).finally(() => {
+      window.location.href = `${getLoginUrl()}?worker=${encodeURIComponent(workerId)}`;
+    });
   };
 
   return (
