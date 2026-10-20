@@ -6,10 +6,6 @@ promoted to `main` and tagged.
 
 ## [Unreleased]
 
-### Docs
-
-- The fork-only environment variables `LLAMACPP_API_BASE`, `LITELLM_RESPONSES_CONVERSATION_TTL_SECONDS` and `OTLP_ENDPOINT` are now listed in a reference table in `DEMO.md`. `LITELLM_RESPONSES_CONVERSATION_TTL_SECONDS` was not documented anywhere before, and the env-key docs check now fails if a fork variable is missing from that table (#42)
-
 ## [v1.94.0-fork.1] - 2026-10-19
 
 ### Added
@@ -40,3 +36,4 @@ promoted to `main` and tagged.
 ### Docs
 
 - INNOVATIONS.md gains a round-2 section of ranked proposals built from measurements against a real llama.cpp, with round-1 ship status. CLAUDE.md now documents lint and the git identity setup for plain GitHub clones. DEMO.md has verification steps for the tracer and the overflow handling.
+- The fork-only environment variables `LLAMACPP_API_BASE`, `LITELLM_RESPONSES_CONVERSATION_TTL_SECONDS` and `OTLP_ENDPOINT` are now listed in a reference table in `DEMO.md`. `LITELLM_RESPONSES_CONVERSATION_TTL_SECONDS` was not documented anywhere before, and the env-key docs check now fails if a fork variable is missing from that table (#42)
