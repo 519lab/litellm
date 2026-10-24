@@ -1611,7 +1611,7 @@ async def get_groups(
             # Get team members with display names
             members = await _get_team_members_display(team.members or [])
             verbose_proxy_logger.debug(f"SCIM GET GROUPS members: {members}")
-            team_alias = getattr(team, "team_alias", team.team_id)
+            team_alias = team.team_alias or team.team_id
             team_created_at = team.created_at.isoformat() if team.created_at else None
             team_updated_at = team.updated_at.isoformat() if team.updated_at else None
 
