@@ -6,9 +6,11 @@ promoted to `main` and tagged.
 
 ## [Unreleased]
 
-### Docs
+### Fixed
 
-- The fork-only environment variables `LLAMACPP_API_BASE`, `LITELLM_RESPONSES_CONVERSATION_TTL_SECONDS` and `OTLP_ENDPOINT` are now listed in a reference table in `DEMO.md`. `LITELLM_RESPONSES_CONVERSATION_TTL_SECONDS` was not documented anywhere before, and the env-key docs check now fails if a fork variable is missing from that table (#42)
+- A SCIM user sync no longer evicts users from teams the IdP does not know about, and SCIM no longer deletes keys. `PUT` and `PATCH /scim/v2/Users` used to write team membership from the user's `groups`, which the advertised schema (and RFC 7643) marks read-only, so an IdP's first sync removed the user from every hand-made team and hard-deleted all of their keys in those teams. User endpoints now leave membership to `/scim/v2/Groups`, and a SCIM group removal blocks the user's keys for that team (tagged `scim_team_removed`, restored if they are added back) instead of deleting them. `/team/member_delete` called by an admin still deletes the member's team keys (#62)
+- `/user/update` now refuses to set `metadata.scim_active` to false on the caller's own user. Saving that from the dashboard's user edit form locked the admin out completely, because auth rejects every key a SCIM-deactivated user owns, including the session making the edit; only the master key could undo it. Deactivating another user is unchanged (#62)
+- The Terraform provider now builds against grpc 1.83.2 (GHSA-2v4p-qf9q-27wj, high) and circl 1.6.3 (GHSA-q9hv-hpm4-hj6x, low), clearing the two remaining open Dependabot alerts. The stale Dependabot PRs #47 and #48 could not be rebased, so this replaces them
 
 ## [v1.94.0-fork.1] - 2026-10-19
 
@@ -40,3 +42,4 @@ promoted to `main` and tagged.
 ### Docs
 
 - INNOVATIONS.md gains a round-2 section of ranked proposals built from measurements against a real llama.cpp, with round-1 ship status. CLAUDE.md now documents lint and the git identity setup for plain GitHub clones. DEMO.md has verification steps for the tracer and the overflow handling.
+- The fork-only environment variables `LLAMACPP_API_BASE`, `LITELLM_RESPONSES_CONVERSATION_TTL_SECONDS` and `OTLP_ENDPOINT` are now listed in a reference table in `DEMO.md`. `LITELLM_RESPONSES_CONVERSATION_TTL_SECONDS` was not documented anywhere before, and the env-key docs check now fails if a fork variable is missing from that table (#42)

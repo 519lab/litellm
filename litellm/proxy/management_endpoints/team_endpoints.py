@@ -2682,6 +2682,15 @@ async def team_member_delete(
     }'
     ```
     """
+    return await remove_team_member(data=data, user_api_key_dict=user_api_key_dict, delete_member_keys=True)
+
+
+async def remove_team_member(
+    data: TeamMemberDeleteRequest,
+    user_api_key_dict: UserAPIKeyAuth,
+    *,
+    delete_member_keys: bool,
+) -> LiteLLM_TeamTable:
     from litellm.proxy.proxy_server import prisma_client
 
     if prisma_client is None:
@@ -2782,7 +2791,7 @@ async def team_member_delete(
         )
 
     ## DELETE KEYS CREATED BY USER FOR THIS TEAM
-    if user_ids_to_delete:
+    if delete_member_keys and user_ids_to_delete:
         from litellm.proxy.management_endpoints.key_management_endpoints import (
             _persist_deleted_verification_tokens,
         )

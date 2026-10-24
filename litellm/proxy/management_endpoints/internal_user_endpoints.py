@@ -15,6 +15,7 @@ These are members of a Team on LiteLLM
 import asyncio
 import json
 import traceback
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import Any, Dict, Final, List, Optional, Union, cast
 
@@ -59,16 +60,16 @@ from litellm.repositories.verification_token_repository import (
 from litellm.types.proxy.management_endpoints.common_daily_activity import (
     SpendAnalyticsPaginatedResponse,
 )
-from litellm.types.proxy.management_endpoints.scim_v2 import (
-    SCIM_ENTERPRISE_METADATA_KEY,
-    SCIM_ENTITLEMENTS_METADATA_KEY,
-    SCIM_ROLES_METADATA_KEY,
-)
 from litellm.types.proxy.management_endpoints.internal_user_endpoints import (
     BulkUpdateUserRequest,
     BulkUpdateUserResponse,
     UserListResponse,
     UserUpdateResult,
+)
+from litellm.types.proxy.management_endpoints.scim_v2 import (
+    SCIM_ENTERPRISE_METADATA_KEY,
+    SCIM_ENTITLEMENTS_METADATA_KEY,
+    SCIM_ROLES_METADATA_KEY,
 )
 
 if TYPE_CHECKING:
@@ -1214,6 +1215,14 @@ async def _revoke_sessions_after_password_write(
     )
 
 
+def _deactivates_scim_user(existing_metadata: Mapping[str, object], new_metadata: object) -> bool:
+    return (
+        isinstance(new_metadata, Mapping)
+        and new_metadata.get("scim_active") is False
+        and existing_metadata.get("scim_active") is not False
+    )
+
+
 async def _update_single_user_helper(
     user_request: UpdateUserRequest,
     user_api_key_dict: UserAPIKeyAuth,
@@ -1285,6 +1294,15 @@ async def _update_single_user_helper(
         non_default_values=non_default_values,
         existing_metadata=existing_metadata or {},
     )
+
+    if _is_self_update and _deactivates_scim_user(existing_metadata, non_default_values.get("metadata")):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "You cannot deactivate your own account; every key you own, including this session, "
+                "would stop working. Ask another admin or use the master key."
+            },
+        )
 
     # Reject NaN/±inf spend before it can reach the DB / spend counter.
     validate_finite_spend(non_default_values.get("spend"))

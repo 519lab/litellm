@@ -13,7 +13,6 @@ from litellm.proxy._types import (
 from litellm.proxy.management_endpoints.scim.scim_v2 import (
     UserProvisionerHelpers,
     _extract_group_member_ids,
-    _handle_team_membership_changes,
     _process_group_patch_operations,
     _recompute_scim_member_roles,
     create_group,
@@ -631,100 +630,6 @@ async def test_handle_existing_user_by_email_existing_user_updated(mocker):
 
 
 @pytest.mark.asyncio
-async def test_handle_team_membership_changes_no_changes(mocker):
-    """Should not call patch_team_membership when existing teams equal new teams"""
-    mock_patch_team_membership = mocker.patch(
-        "litellm.proxy.management_endpoints.scim.scim_v2.patch_team_membership",
-        AsyncMock(),
-    )
-
-    # Same teams - no changes
-    await _handle_team_membership_changes(
-        user_id="test-user",
-        existing_teams=["team1", "team2"],
-        new_teams=["team1", "team2"],
-    )
-
-    # Should not be called since no changes
-    mock_patch_team_membership.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_handle_team_membership_changes_add_teams(mocker):
-    """Should call patch_team_membership with teams to add"""
-    mock_patch_team_membership = mocker.patch(
-        "litellm.proxy.management_endpoints.scim.scim_v2.patch_team_membership",
-        AsyncMock(),
-    )
-
-    # Adding teams
-    await _handle_team_membership_changes(
-        user_id="test-user",
-        existing_teams=["team1"],
-        new_teams=["team1", "team2", "team3"],
-    )
-
-    # Verify the call was made once
-    mock_patch_team_membership.assert_called_once()
-
-    # Check the arguments more flexibly to handle order variations
-    call_args = mock_patch_team_membership.call_args
-    assert call_args[1]["user_id"] == "test-user"
-    assert set(call_args[1]["teams_ids_to_add_user_to"]) == {"team2", "team3"}
-    assert call_args[1]["teams_ids_to_remove_user_from"] == []
-
-
-@pytest.mark.asyncio
-async def test_handle_team_membership_changes_remove_teams(mocker):
-    """Should call patch_team_membership with teams to remove"""
-    mock_patch_team_membership = mocker.patch(
-        "litellm.proxy.management_endpoints.scim.scim_v2.patch_team_membership",
-        AsyncMock(),
-    )
-
-    # Removing teams
-    await _handle_team_membership_changes(
-        user_id="test-user",
-        existing_teams=["team1", "team2", "team3"],
-        new_teams=["team1"],
-    )
-
-    # Verify the call was made once
-    mock_patch_team_membership.assert_called_once()
-
-    # Check the arguments more flexibly to handle order variations
-    call_args = mock_patch_team_membership.call_args
-    assert call_args[1]["user_id"] == "test-user"
-    assert call_args[1]["teams_ids_to_add_user_to"] == []
-    assert set(call_args[1]["teams_ids_to_remove_user_from"]) == {"team2", "team3"}
-
-
-@pytest.mark.asyncio
-async def test_handle_team_membership_changes_add_and_remove(mocker):
-    """Should call patch_team_membership with both teams to add and remove"""
-    mock_patch_team_membership = mocker.patch(
-        "litellm.proxy.management_endpoints.scim.scim_v2.patch_team_membership",
-        AsyncMock(),
-    )
-
-    # Both adding and removing teams
-    await _handle_team_membership_changes(
-        user_id="test-user",
-        existing_teams=["team1", "team2"],
-        new_teams=["team2", "team3"],
-    )
-
-    # Verify the call was made once
-    mock_patch_team_membership.assert_called_once()
-
-    # Check the arguments - team1 should be removed, team3 should be added, team2 stays
-    call_args = mock_patch_team_membership.call_args
-    assert call_args[1]["user_id"] == "test-user"
-    assert call_args[1]["teams_ids_to_add_user_to"] == ["team3"]
-    assert call_args[1]["teams_ids_to_remove_user_from"] == ["team1"]
-
-
-@pytest.mark.asyncio
 async def test_update_user_success(mocker):
     """Should successfully update user with PUT request"""
     # Mock existing user
@@ -776,10 +681,6 @@ async def test_update_user_success(mocker):
         AsyncMock(return_value=existing_user),
     )
     mocker.patch(
-        "litellm.proxy.management_endpoints.scim.scim_v2._handle_team_membership_changes",
-        AsyncMock(),
-    )
-    mocker.patch(
         "litellm.proxy.management_endpoints.scim.scim_v2.ScimTransformations.transform_litellm_user_to_scim_user",
         AsyncMock(return_value=response_scim_user),
     )
@@ -795,7 +696,7 @@ async def test_update_user_success(mocker):
     call_args = mock_prisma_client.db.litellm_usertable.update.call_args
     assert call_args[1]["where"] == {"user_id": "test-user"}
     assert call_args[1]["data"]["user_email"] == "updated@example.com"
-    assert call_args[1]["data"]["teams"] == ["new-team"]
+    assert "teams" not in call_args[1]["data"]
 
 
 @pytest.mark.asyncio
@@ -876,10 +777,6 @@ async def test_patch_user_success(mocker):
     mocker.patch(
         "litellm.proxy.management_endpoints.scim.scim_v2._check_user_exists",
         AsyncMock(return_value=existing_user),
-    )
-    mocker.patch(
-        "litellm.proxy.management_endpoints.scim.scim_v2._handle_team_membership_changes",
-        AsyncMock(),
     )
     mocker.patch(
         "litellm.proxy.management_endpoints.scim.scim_v2.ScimTransformations.transform_litellm_user_to_scim_user",
@@ -1985,10 +1882,6 @@ async def test_update_user_demotes_admin_when_removed_from_scim_admin_group(
         AsyncMock(return_value=existing_user),
     )
     mocker.patch(
-        "litellm.proxy.management_endpoints.scim.scim_v2._handle_team_membership_changes",
-        AsyncMock(),
-    )
-    mocker.patch(
         "litellm.proxy.management_endpoints.scim.scim_v2.ScimTransformations.transform_litellm_user_to_scim_user",
         AsyncMock(return_value=scim_user),
     )
@@ -2046,10 +1939,6 @@ async def test_update_user_does_not_force_role_when_scim_admin_group_unset(
     mocker.patch(
         "litellm.proxy.management_endpoints.scim.scim_v2._check_user_exists",
         AsyncMock(return_value=existing_user),
-    )
-    mocker.patch(
-        "litellm.proxy.management_endpoints.scim.scim_v2._handle_team_membership_changes",
-        AsyncMock(),
     )
     mocker.patch(
         "litellm.proxy.management_endpoints.scim.scim_v2.ScimTransformations.transform_litellm_user_to_scim_user",
@@ -2114,10 +2003,6 @@ async def test_update_user_demotes_when_default_params_lack_user_role(
         AsyncMock(return_value=existing_user),
     )
     mocker.patch(
-        "litellm.proxy.management_endpoints.scim.scim_v2._handle_team_membership_changes",
-        AsyncMock(),
-    )
-    mocker.patch(
         "litellm.proxy.management_endpoints.scim.scim_v2.ScimTransformations.transform_litellm_user_to_scim_user",
         AsyncMock(return_value=scim_user),
     )
@@ -2132,8 +2017,8 @@ async def test_update_user_demotes_when_default_params_lack_user_role(
 async def test_patch_user_demotes_admin_when_removed_from_scim_admin_group(
     mocker, monkeypatch
 ):
-    """PATCH that drops the admin team from the resulting team set must write the
-    non-admin default, mirroring the PUT demotion path."""
+    """PATCH re-resolves the role from the user's current teams, so a user no longer
+    in the admin team gets the non-admin default, mirroring the PUT demotion path."""
     from litellm.proxy.proxy_server import proxy_config
 
     async def mock_get_config():
@@ -2143,16 +2028,12 @@ async def test_patch_user_demotes_admin_when_removed_from_scim_admin_group(
     monkeypatch.setattr("litellm.default_internal_user_params", None, raising=False)
 
     existing_user = mocker.MagicMock()
-    existing_user.teams = ["litellm-admins"]
+    existing_user.teams = ["engineering"]
     existing_user.metadata = {}
 
     patch_ops = SCIMPatchOp(
         schemas=["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
-        Operations=[
-            SCIMPatchOperation(
-                op="replace", path="groups", value=[{"value": "engineering"}]
-            )
-        ],
+        Operations=[SCIMPatchOperation(op="replace", path="displayName", value="Demoted")],
     )
 
     updated_user = {
@@ -2185,10 +2066,6 @@ async def test_patch_user_demotes_admin_when_removed_from_scim_admin_group(
         AsyncMock(return_value=existing_user),
     )
     mocker.patch(
-        "litellm.proxy.management_endpoints.scim.scim_v2._handle_team_membership_changes",
-        AsyncMock(),
-    )
-    mocker.patch(
         "litellm.proxy.management_endpoints.scim.scim_v2.ScimTransformations.transform_litellm_user_to_scim_user",
         AsyncMock(
             return_value=SCIMUser(
@@ -2206,7 +2083,7 @@ async def test_patch_user_demotes_admin_when_removed_from_scim_admin_group(
 
 @pytest.mark.asyncio
 async def test_patch_user_grants_admin_by_team_display_name(mocker, monkeypatch):
-    """PATCH carries groups as team ids, so admin-group matching must fall back to
+    """User teams are stored as team ids, so admin-group matching must fall back to
     each team's display name; an admin group configured as a human-readable alias
     grants PROXY_ADMIN even when the team id differs."""
     from litellm.proxy.proxy_server import proxy_config
@@ -2218,16 +2095,12 @@ async def test_patch_user_grants_admin_by_team_display_name(mocker, monkeypatch)
     monkeypatch.setattr("litellm.default_internal_user_params", None, raising=False)
 
     existing_user = mocker.MagicMock()
-    existing_user.teams = []
+    existing_user.teams = ["team-abc-123"]
     existing_user.metadata = {}
 
     patch_ops = SCIMPatchOp(
         schemas=["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
-        Operations=[
-            SCIMPatchOperation(
-                op="replace", path="groups", value=[{"value": "team-abc-123"}]
-            )
-        ],
+        Operations=[SCIMPatchOperation(op="replace", path="displayName", value="Promoted")],
     )
 
     updated_user = {
@@ -2258,10 +2131,6 @@ async def test_patch_user_grants_admin_by_team_display_name(mocker, monkeypatch)
     mocker.patch(
         "litellm.proxy.management_endpoints.scim.scim_v2._check_user_exists",
         AsyncMock(return_value=existing_user),
-    )
-    mocker.patch(
-        "litellm.proxy.management_endpoints.scim.scim_v2._handle_team_membership_changes",
-        AsyncMock(),
     )
     mocker.patch(
         "litellm.proxy.management_endpoints.scim.scim_v2.ScimTransformations.transform_litellm_user_to_scim_user",
