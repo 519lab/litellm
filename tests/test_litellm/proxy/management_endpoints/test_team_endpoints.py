@@ -3949,6 +3949,51 @@ async def test_team_member_delete_cleans_verification_tokens(
 
 
 @pytest.mark.asyncio
+async def test_remove_team_member_can_keep_member_keys(mock_db_client, mock_admin_auth):
+    from litellm.proxy._types import TeamMemberDeleteRequest
+    from litellm.proxy.management_endpoints.team_endpoints import remove_team_member
+
+    test_team_id = "team-keep-keys"
+    test_user_id = "user-keep-keys@example.com"
+
+    mock_team_row = MagicMock()
+    mock_team_row.model_dump.return_value = {
+        "team_id": test_team_id,
+        "members_with_roles": [{"user_id": test_user_id, "user_email": None, "role": "user"}],
+        "team_member_permissions": [],
+        "metadata": {},
+        "models": [],
+        "spend": 0.0,
+    }
+    mock_db_client.db.litellm_teamtable.find_unique = AsyncMock(return_value=mock_team_row)
+    mock_db_client.db.litellm_teamtable.update = AsyncMock(return_value=mock_team_row)
+
+    mock_user_row = MagicMock()
+    mock_user_row.user_id = test_user_id
+    mock_user_row.teams = [test_team_id]
+    mock_db_client.db.litellm_usertable.find_many = AsyncMock(return_value=[mock_user_row])
+    mock_db_client.db.litellm_usertable.update = AsyncMock(return_value=MagicMock())
+
+    mock_db_client.db.litellm_teammembership = MagicMock()
+    mock_db_client.db.litellm_teammembership.delete_many = AsyncMock(return_value=MagicMock())
+    mock_db_client.db.litellm_verificationtoken = MagicMock()
+    mock_db_client.db.litellm_verificationtoken.find_many = AsyncMock(return_value=[])
+    mock_db_client.db.litellm_verificationtoken.delete_many = AsyncMock(return_value=MagicMock())
+
+    await remove_team_member(
+        data=TeamMemberDeleteRequest(team_id=test_team_id, user_id=test_user_id),
+        user_api_key_dict=mock_admin_auth,
+        delete_member_keys=False,
+    )
+
+    mock_db_client.db.litellm_teammembership.delete_many.assert_awaited_once_with(
+        where={"team_id": test_team_id, "user_id": test_user_id}
+    )
+    mock_db_client.db.litellm_verificationtoken.find_many.assert_not_awaited()
+    mock_db_client.db.litellm_verificationtoken.delete_many.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_new_team_max_budget_exceeds_user_max_budget():
     """
     Test that /team/new raises ProxyException when max_budget exceeds user's end_user_max_budget.
