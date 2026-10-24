@@ -544,8 +544,6 @@ async def test_scim_put_user_explicit_active_false_blocks_keys():
 
 
 class _FakeTokenTable:
-    """In-memory stand-in for litellm_verificationtoken that applies updates, so a
-    sequence of SCIM operations can be checked against the resulting key state."""
 
     def __init__(self, rows):
         self.rows = rows
@@ -576,9 +574,6 @@ def _prisma_with_token_table(table):
 
 @pytest.mark.asyncio
 async def test_scim_team_removal_blocks_team_keys_instead_of_deleting():
-    """Regression: SCIM removing a user from a team used to hard-delete every key the
-    user owned in that team. It must keep the membership removal but only block
-    that team's keys, leaving keys of other teams alone."""
     from litellm.proxy.management_endpoints.scim.scim_v2 import (
         SCIM_TEAM_REMOVED_METADATA_KEY,
         patch_team_membership,
@@ -606,8 +601,6 @@ async def test_scim_team_removal_blocks_team_keys_instead_of_deleting():
 
 @pytest.mark.asyncio
 async def test_scim_team_readd_unblocks_only_keys_blocked_by_team_removal():
-    """Re-adding the user to the team restores keys SCIM blocked on removal, but a key
-    an admin blocked manually stays blocked."""
     from litellm.proxy.management_endpoints.scim.scim_v2 import (
         SCIM_TEAM_REMOVED_METADATA_KEY,
         patch_team_membership,
@@ -633,7 +626,6 @@ async def test_scim_team_readd_unblocks_only_keys_blocked_by_team_removal():
 
 @pytest.mark.asyncio
 async def test_scim_team_add_failure_leaves_team_keys_blocked():
-    """If adding the user back to the team fails, the keys must stay blocked."""
     from litellm.proxy.management_endpoints.scim.scim_v2 import (
         SCIM_TEAM_REMOVED_METADATA_KEY,
         patch_team_membership,
@@ -659,8 +651,6 @@ async def test_scim_team_add_failure_leaves_team_keys_blocked():
 
 @pytest.mark.asyncio
 async def test_user_reactivation_keeps_team_removed_keys_blocked():
-    """Deactivating then reactivating a user must not unblock a key SCIM blocked
-    because the user left its team; the two markers are independent."""
     from litellm.proxy.management_endpoints.scim.scim_v2 import SCIM_TEAM_REMOVED_METADATA_KEY
 
     team_removed_key = _team_key("k-a", "team-a", blocked=True, metadata={SCIM_TEAM_REMOVED_METADATA_KEY: True})
@@ -679,3 +669,45 @@ async def test_user_reactivation_keeps_team_removed_keys_blocked():
     assert plain_key.blocked is False
     assert team_removed_key.blocked is True
     assert team_removed_key.metadata == {SCIM_TEAM_REMOVED_METADATA_KEY: True}
+
+
+@pytest.mark.asyncio
+async def test_scim_team_removal_blocks_keys_even_if_membership_removal_fails():
+    from litellm.proxy.management_endpoints.scim.scim_v2 import patch_team_membership
+
+    team_key = _team_key("k-a", "team-a")
+    table = _FakeTokenTable([team_key])
+
+    with (
+        patch("litellm.proxy.proxy_server.prisma_client", _prisma_with_token_table(table)),
+        patch(
+            "litellm.proxy.management_endpoints.scim.scim_v2.remove_team_member",
+            AsyncMock(side_effect=RuntimeError("membership write failed")),
+        ),
+        patch("litellm.proxy.management_endpoints.scim.scim_v2._delete_cache_key_object", AsyncMock()),
+    ):
+        await patch_team_membership(
+            user_id="user-1", teams_ids_to_add_user_to=[], teams_ids_to_remove_user_from=["team-a"]
+        )
+
+    assert team_key.blocked is True
+
+
+@pytest.mark.asyncio
+async def test_stale_team_marker_on_admin_unblocked_key_does_not_reblock_it():
+    from litellm.proxy.management_endpoints.scim.scim_v2 import SCIM_TEAM_REMOVED_METADATA_KEY
+
+    admin_unblocked_key = _team_key(
+        "k-a", "team-a", blocked=False, metadata={SCIM_TEAM_REMOVED_METADATA_KEY: True, "note": "keep"}
+    )
+    table = _FakeTokenTable([admin_unblocked_key])
+
+    with (
+        patch("litellm.proxy.proxy_server.prisma_client", _prisma_with_token_table(table)),
+        patch("litellm.proxy.management_endpoints.scim.scim_v2._delete_cache_key_object", AsyncMock()),
+    ):
+        await _set_user_keys_blocked(user_id="user-1", blocked=True)
+        await _set_user_keys_blocked(user_id="user-1", blocked=False)
+
+    assert admin_unblocked_key.blocked is False
+    assert admin_unblocked_key.metadata == {"note": "keep"}

@@ -3950,8 +3950,6 @@ async def test_team_member_delete_cleans_verification_tokens(
 
 @pytest.mark.asyncio
 async def test_remove_team_member_can_keep_member_keys(mock_db_client, mock_admin_auth):
-    """SCIM group sync removes members with delete_member_keys=False so it can block
-    their team keys instead; the membership must still go, the keys must not."""
     from litellm.proxy._types import TeamMemberDeleteRequest
     from litellm.proxy.management_endpoints.team_endpoints import remove_team_member
 

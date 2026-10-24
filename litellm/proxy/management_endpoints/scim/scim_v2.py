@@ -445,11 +445,6 @@ SCIM_TEAM_REMOVED_METADATA_KEY = "scim_team_removed"
 _SCIM_KEY_BLOCK_MARKERS = (SCIM_BLOCKED_METADATA_KEY, SCIM_TEAM_REMOVED_METADATA_KEY)
 
 
-def _key_was_scim_blocked(metadata: Any) -> bool:
-    """True if a verification token carries the SCIM-block marker in metadata."""
-    return isinstance(metadata, dict) and metadata.get(SCIM_BLOCKED_METADATA_KEY) is True
-
-
 def _scim_markers_on_key(metadata: Any) -> frozenset[str]:
     if not isinstance(metadata, dict):
         return frozenset()
@@ -457,25 +452,16 @@ def _scim_markers_on_key(metadata: Any) -> frozenset[str]:
 
 
 async def _set_scim_key_marker(where: Dict[str, str], marker: str, present: bool) -> int:
-    """
-    Add or remove one SCIM block marker on the keys matching ``where`` and
-    invalidate them in the in-memory/redis caches so the change takes effect
-    immediately.
-
-    A key stays blocked while it carries any SCIM marker, so reactivating a
-    user does not unblock keys of a team SCIM removed them from, and vice
-    versa. A key an admin blocked manually (blocked without any SCIM marker)
-    is left alone.
-
-    Returns the number of keys whose metadata was changed.
-    """
     from litellm.proxy.proxy_server import proxy_logging_obj, user_api_key_cache
 
     prisma_client = await _get_prisma_client_or_raise_exception()
     candidates = await VerificationTokenRepository(prisma_client).table.find_many(where=where)
 
+    def _live_markers(key_row: Any) -> frozenset[str]:
+        return _scim_markers_on_key(key_row.metadata) if key_row.blocked is True else frozenset()
+
     def _is_affected(key_row: Any) -> bool:
-        markers = _scim_markers_on_key(key_row.metadata)
+        markers = _live_markers(key_row)
         if not present:
             return marker in markers
         manually_blocked = key_row.blocked is True and not markers
@@ -487,14 +473,14 @@ async def _set_scim_key_marker(where: Dict[str, str], marker: str, present: bool
 
     for key_row in affected_keys:
         current_metadata: Dict[str, Any] = dict(key_row.metadata) if isinstance(key_row.metadata, dict) else {}
-        new_metadata = (
-            {**current_metadata, marker: True}
-            if present
-            else {k: v for k, v in current_metadata.items() if k != marker}
-        )
+        new_markers = _live_markers(key_row) | {marker} if present else _live_markers(key_row) - {marker}
+        new_metadata = {
+            **{k: v for k, v in current_metadata.items() if k not in _SCIM_KEY_BLOCK_MARKERS},
+            **dict.fromkeys(new_markers, True),
+        }
         await VerificationTokenRepository(prisma_client).table.update(
             where={"token": key_row.token},
-            data={"blocked": bool(_scim_markers_on_key(new_metadata)), "metadata": safe_dumps(new_metadata)},
+            data={"blocked": bool(new_markers), "metadata": safe_dumps(new_metadata)},
         )
 
     for key_row in affected_keys:
@@ -515,12 +501,10 @@ async def _set_scim_key_marker(where: Dict[str, str], marker: str, present: bool
 
 
 async def _set_user_keys_blocked(user_id: str, blocked: bool) -> int:
-    """Block or unblock every virtual key owned by a user (SCIM deactivation)."""
     return await _set_scim_key_marker({"user_id": user_id}, SCIM_BLOCKED_METADATA_KEY, blocked)
 
 
 async def _set_user_team_keys_blocked(user_id: str, team_id: str, blocked: bool) -> int:
-    """Block or unblock a user's virtual keys for one team (SCIM group membership)."""
     return await _set_scim_key_marker({"user_id": user_id, "team_id": team_id}, SCIM_TEAM_REMOVED_METADATA_KEY, blocked)
 
 
@@ -1505,12 +1489,12 @@ async def patch_team_membership(
 
     for _team_id in teams_ids_to_remove_user_from:
         try:
+            await _set_user_team_keys_blocked(user_id=user_id, team_id=_team_id, blocked=True)
             await remove_team_member(
                 data=TeamMemberDeleteRequest(team_id=_team_id, user_id=user_id),
                 user_api_key_dict=UserAPIKeyAuth(user_role=LitellmUserRoles.PROXY_ADMIN),
                 delete_member_keys=False,
             )
-            await _set_user_team_keys_blocked(user_id=user_id, team_id=_team_id, blocked=True)
         except Exception as e:
             verbose_proxy_logger.exception(f"Error removing user from team {_team_id}: {e}")
 

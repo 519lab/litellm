@@ -81,8 +81,6 @@ async def test_patch_user_updates_fields():
 
 @pytest.mark.asyncio
 async def test_patch_user_ignores_read_only_groups():
-    """User.groups is readOnly (RFC 7643 4.1.2); a user PATCH must not change team
-    membership, otherwise an IdP that omits hand-made teams evicts the user from them."""
     mock_user = LiteLLM_UserTable(
         user_id="user-2",
         user_email="test@example.com",
@@ -435,8 +433,6 @@ def test_apply_patch_ops_filtered_path_raises_400_instead_of_junk_metadata():
 
 @pytest.mark.asyncio
 async def test_put_user_with_groups_omitting_existing_teams_keeps_membership():
-    """Regression: a first IdP sync PUT whose groups did not list the user's hand-made
-    teams removed the user from them and hard-deleted their team keys."""
     from litellm.proxy.management_endpoints.scim.scim_v2 import update_user
     from litellm.types.proxy.management_endpoints.scim_v2 import SCIMUserGroup
 

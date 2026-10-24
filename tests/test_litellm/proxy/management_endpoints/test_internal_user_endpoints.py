@@ -2476,10 +2476,6 @@ async def test_user_update_rejects_silent_create_for_non_proxy_admin(mocker):
 )
 @pytest.mark.asyncio
 async def test_user_update_rejects_self_scim_deactivation(mocker, caller_id, existing_active, expect_blocked):
-    """Regression: an admin editing their own user in the dashboard saved
-    metadata.scim_active=False, which makes auth reject every key they own
-    (including the session doing the edit) with no way back short of the master key.
-    Deactivating someone else, or saving an already inactive record, stays allowed."""
     from fastapi import HTTPException
 
     from litellm.proxy._types import UpdateUserRequest, UserAPIKeyAuth
