@@ -2724,3 +2724,21 @@ async def test_patch_group_rename_recomputes_retained_members(mocker):
 
     recompute_mock.assert_awaited_once()
     assert set(recompute_mock.call_args[0][1]) == {"user1"}
+
+
+@pytest.mark.asyncio
+async def test_get_groups_lists_team_without_alias_by_team_id(mocker):
+    from litellm.proxy.management_endpoints.scim.scim_v2 import get_groups
+
+    unnamed_team = mocker.MagicMock(team_id="team-unnamed", team_alias=None, members=[], created_at=None, updated_at=None)
+    mock_prisma_client = mocker.MagicMock()
+    mock_prisma_client.db.litellm_teamtable.find_many = AsyncMock(return_value=[unnamed_team])
+    mock_prisma_client.db.litellm_teamtable.count = AsyncMock(return_value=1)
+    mocker.patch(
+        "litellm.proxy.management_endpoints.scim.scim_v2._get_prisma_client_or_raise_exception",
+        AsyncMock(return_value=mock_prisma_client),
+    )
+
+    result = await get_groups(startIndex=1, count=10, filter=None)
+
+    assert [(g.id, g.displayName) for g in result.Resources] == [("team-unnamed", "team-unnamed")]

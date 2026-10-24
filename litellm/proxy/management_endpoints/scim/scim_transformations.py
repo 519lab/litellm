@@ -35,7 +35,7 @@ class ScimTransformations:
         for team_id in user.teams or []:
             team = await TeamRepository(prisma_client).table.find_unique(where={"team_id": team_id})
             if team:
-                team_alias = getattr(team, "team_alias", team.team_id)
+                team_alias = team.team_alias or team.team_id
                 groups.append(SCIMUserGroup(value=team.team_id, display=team_alias))
 
         user_created_at = user.created_at.isoformat() if user.created_at else None
@@ -178,7 +178,7 @@ class ScimTransformations:
                 )
             )
 
-        team_alias = getattr(team, "team_alias", team.team_id)
+        team_alias = team.team_alias or team.team_id
         team_created_at = team.created_at.isoformat() if team.created_at else None
         team_updated_at = team.updated_at.isoformat() if team.updated_at else None
 
