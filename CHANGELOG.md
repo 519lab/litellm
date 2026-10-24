@@ -8,6 +8,7 @@ promoted to `main` and tagged.
 
 ### Fixed
 
+- A SCIM user sync no longer evicts users from teams the IdP does not know about, and SCIM no longer deletes keys. `PUT` and `PATCH /scim/v2/Users` used to write team membership from the user's `groups`, which the advertised schema (and RFC 7643) marks read-only, so an IdP's first sync removed the user from every hand-made team and hard-deleted all of their keys in those teams. User endpoints now leave membership to `/scim/v2/Groups`, and a SCIM group removal blocks the user's keys for that team (tagged `scim_team_removed`, restored if they are added back) instead of deleting them. `/team/member_delete` called by an admin still deletes the member's team keys (#62)
 - The Terraform provider now builds against grpc 1.83.2 (GHSA-2v4p-qf9q-27wj, high) and circl 1.6.3 (GHSA-q9hv-hpm4-hj6x, low), clearing the two remaining open Dependabot alerts. The stale Dependabot PRs #47 and #48 could not be rebased, so this replaces them
 
 ## [v1.94.0-fork.1] - 2026-10-19
