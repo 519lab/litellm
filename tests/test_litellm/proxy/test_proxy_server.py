@@ -2498,7 +2498,7 @@ async def test_add_proxy_budget_to_db_backfills_budget_reset_at():
 
 
 @pytest.mark.asyncio
-async def test_custom_ui_sso_sign_in_handler_config_loading():
+async def test_custom_ui_sso_sign_in_handler_config_loading(monkeypatch):
     """
     Test that custom_ui_sso_sign_in_handler from config gets properly loaded into the global variable
     """
@@ -2507,7 +2507,13 @@ async def test_custom_ui_sso_sign_in_handler_config_loading():
 
     import yaml
 
+    from litellm.proxy import proxy_server
     from litellm.proxy.proxy_server import ProxyConfig
+
+    monkeypatch.setattr(proxy_server, "user_config_file_path", proxy_server.user_config_file_path)
+    monkeypatch.setattr(
+        proxy_server, "user_custom_ui_sso_sign_in_handler", proxy_server.user_custom_ui_sso_sign_in_handler
+    )
 
     # Create a test config with custom_ui_sso_sign_in_handler
     test_config = {
