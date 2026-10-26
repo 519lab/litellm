@@ -2,14 +2,7 @@
 Type definitions for litellm.compress().
 """
 
-import sys
-
-if sys.version_info >= (3, 11):
-    from typing import Dict, List, NotRequired, TypedDict
-else:
-    from typing import Dict, List, TypedDict
-
-    from typing_extensions import NotRequired
+from typing import Dict, List, NotRequired, TypedDict
 
 
 class CompressedResult(TypedDict):
