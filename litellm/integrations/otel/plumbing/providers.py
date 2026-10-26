@@ -3,11 +3,9 @@
 from typing import TYPE_CHECKING, Any, Callable, Final, Iterable, Literal
 
 from opentelemetry import _logs, baggage, metrics
-from opentelemetry._events import EventLogger
-from opentelemetry._logs import LoggerProvider, NoOpLoggerProvider
+from opentelemetry._logs import Logger, LoggerProvider, NoOpLoggerProvider
 from opentelemetry.context import Context
 from opentelemetry.metrics import MeterProvider, NoOpMeterProvider
-from opentelemetry.sdk._events import EventLoggerProvider
 from opentelemetry.sdk._logs import LoggerProvider as SDKLoggerProvider
 from opentelemetry.sdk._logs.export import (
     BatchLogRecordProcessor,
@@ -359,8 +357,8 @@ def resolve_logger_provider(
     return provider
 
 
-def get_event_logger(provider: SDKLoggerProvider, name: str = "litellm") -> EventLogger:
-    return EventLoggerProvider(logger_provider=provider).get_event_logger(name, litellm_version)
+def get_event_logger(provider: SDKLoggerProvider, name: str = "litellm") -> Logger:
+    return provider.get_logger(name, litellm_version)
 
 
 def build_meter_provider(

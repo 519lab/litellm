@@ -3,6 +3,7 @@ import os
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests_mock as requests_mock_lib
 
 from litellm.integrations.langfuse.langfuse_otel import LangfuseOtelLogger
 from litellm.integrations.opentelemetry import OpenTelemetryConfig
@@ -490,7 +491,7 @@ class TestLangfuseOtelKeyDynamicConfig:
             assert logger.construct_dynamic_otel_config(self._dynamic_params(langfuse_secret_key=None)) is None
             assert logger.construct_dynamic_otel_config(self._dynamic_params(langfuse_public_key=None)) is None
 
-    def test_key_dynamic_params_create_otlp_exporter_without_global_env(self):
+    def test_key_dynamic_params_create_otlp_exporter_without_global_env(self, requests_mock):
         """Without global LANGFUSE_* env vars, a request carrying key-scoped Langfuse
         credentials must get a tracer exporting via OTLP HTTP to that key's host."""
         from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
@@ -516,12 +517,25 @@ class TestLangfuseOtelKeyDynamicConfig:
 
         exporter = span_processors[0].span_exporter
         assert isinstance(exporter, OTLPSpanExporter)
-        assert exporter._endpoint == "https://langfuse.example.com/api/public/otel/v1/traces"
 
         import base64
 
         expected_auth = base64.b64encode(b"key_public:key_secret").decode()
-        assert exporter._headers == {"Authorization": f"Basic {expected_auth}"}
+        request = self._export_one_span(exporter, requests_mock)
+        assert request.url == "https://langfuse.example.com/api/public/otel/v1/traces"
+        assert request.headers["Authorization"] == f"Basic {expected_auth}"
+
+    @staticmethod
+    def _export_one_span(exporter, requests_mock):
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+
+        requests_mock.post(requests_mock_lib.ANY, status_code=200)
+        provider = TracerProvider()
+        provider.add_span_processor(SimpleSpanProcessor(exporter))
+        provider.get_tracer("t").start_span("call").end()
+        assert requests_mock.call_count == 1
+        return requests_mock.last_request
 
     def test_key_dynamic_params_reuse_cached_provider(self):
         with self._clean_env():
@@ -540,7 +554,7 @@ class TestLangfuseOtelKeyDynamicConfig:
         assert tracer is logger.tracer
         assert logger._tracer_provider_cache == {}
 
-    def test_key_credentials_never_passed_to_debug_logger(self):
+    def test_key_credentials_never_passed_to_debug_logger(self, requests_mock):
         """The span-processor debug logs must receive a redacted header value, so the
         key-scoped Langfuse secret never enters a log record regardless of downstream
         handler configuration, while the exporter still gets the real header."""
@@ -574,7 +588,8 @@ class TestLangfuseOtelKeyDynamicConfig:
         provider = next(iter(logger._tracer_provider_cache.values()))
         exporter = provider._active_span_processor._span_processors[0].span_exporter
         assert isinstance(exporter, OTLPSpanExporter)
-        assert exporter._headers == {"Authorization": f"Basic {secret}"}
+        request = self._export_one_span(exporter, requests_mock)
+        assert request.headers["Authorization"] == f"Basic {secret}"
 
 
 class TestLangfuseOtelResponsesAPI:

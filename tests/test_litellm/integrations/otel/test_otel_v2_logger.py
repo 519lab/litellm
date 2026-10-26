@@ -249,7 +249,7 @@ def test_enable_events_records_operation_exception_through_failure_callback():
     (span,) = span_exporter.get_finished_spans()
     (log,) = log_exporter.get_finished_logs()
     record = log.log_record
-    assert record.attributes["event.name"] == GenAIEvent.OPERATION_EXCEPTION
+    assert record.event_name == GenAIEvent.OPERATION_EXCEPTION
     assert record.attributes[ExceptionEvent.TYPE] == "RateLimitError"
     assert record.attributes[ExceptionEvent.MESSAGE] == "429 rate limited"
     assert record.attributes[ExceptionEvent.STACKTRACE] == "Traceback (most recent call last) ..."
