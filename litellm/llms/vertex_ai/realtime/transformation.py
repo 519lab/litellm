@@ -16,6 +16,7 @@ from typing import List, Optional
 
 from litellm import verbose_logger
 from litellm.llms.gemini.realtime.transformation import GeminiRealtimeConfig
+from litellm.llms.vertex_ai.common_utils import validate_vertex_location
 
 
 class VertexAIRealtimeConfig(GeminiRealtimeConfig):
@@ -57,7 +58,7 @@ class VertexAIRealtimeConfig(GeminiRealtimeConfig):
             base = base.replace("https://", "wss://").replace("http://", "ws://")
             return f"{base}/ws/google.cloud.aiplatform.v1.LlmBidiService/BidiGenerateContent"
 
-        location = self._location
+        location = validate_vertex_location(self._location)
         if location == "global":
             host = "aiplatform.googleapis.com"
         else:

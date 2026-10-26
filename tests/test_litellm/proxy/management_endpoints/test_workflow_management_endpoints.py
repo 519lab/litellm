@@ -547,6 +547,24 @@ class TestTenantIsolation:
         assert call_kwargs["where"].get("created_by") == token
 
     @patch("litellm.proxy.proxy_server.prisma_client")
+    def test_non_admin_without_key_token_lists_nothing(self, mock_pc):
+        """JWT / custom-auth identities carry no key token; they must not see every tenant's runs."""
+        from litellm.proxy._types import LitellmUserRoles, UserAPIKeyAuth
+
+        client = self._make_app_with_auth(
+            lambda: UserAPIKeyAuth(user_id="jwt-user", user_role=LitellmUserRoles.INTERNAL_USER)
+        )
+        mock_pc.db = self._prisma.db
+        self._prisma.db.litellm_workflowrun.find_many = AsyncMock(
+            return_value=[_make_run(created_by="tok-other-owner")]
+        )
+
+        resp = client.get("/v1/workflows/runs")
+        assert resp.status_code == 200
+        assert resp.json() == {"runs": [], "count": 0}
+        self._prisma.db.litellm_workflowrun.find_many.assert_not_awaited()
+
+    @patch("litellm.proxy.proxy_server.prisma_client")
     def test_admin_list_not_scoped(self, mock_pc):
         client = self._make_app_with_auth(_override_auth_admin)
         mock_pc.db = self._prisma.db

@@ -2336,6 +2336,11 @@ async def _validate_update_key_data(
         (data.max_budget is not None and data.max_budget != existing_key_row.max_budget)
         or data.spend is not None
         or "budget_limits" in data.model_fields_set
+        or data.temp_budget_increase is not None
+        or any(
+            field in data.model_fields_set and getattr(data, field) != getattr(existing_key_row, field, None)
+            for field in ("budget_duration", "budget_id", "model_max_budget")
+        )
     )
 
     _existing_metadata = getattr(existing_key_row, "metadata", None)

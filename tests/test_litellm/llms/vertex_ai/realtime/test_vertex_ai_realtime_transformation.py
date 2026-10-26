@@ -38,6 +38,14 @@ def test_get_complete_url_regional():
     )
 
 
+@pytest.mark.parametrize("location", ["attacker.example/x?", "evil.com#", "US-CENTRAL1"])
+def test_get_complete_url_rejects_host_injection_in_location(location):
+    """The Bearer token is sent to this host, so location must never redirect it."""
+    cfg = VertexAIRealtimeConfig(access_token="tok", project="my-proj", location=location)
+    with pytest.raises(ValueError, match="Invalid vertex_location format"):
+        cfg.get_complete_url(api_base=None, model="gemini-2.0-flash-live-001")
+
+
 def test_get_complete_url_global():
     cfg = VertexAIRealtimeConfig(
         access_token="tok", project="my-proj", location="global"

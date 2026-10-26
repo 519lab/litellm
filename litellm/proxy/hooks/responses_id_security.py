@@ -220,7 +220,7 @@ class ResponsesIDSecurity(CustomLogger):
             return False
 
         remaining_string: Final = split_result[1]
-        decrypted_value = decrypt_value_helper(value=remaining_string, key="response_id", return_original_value=True)
+        decrypted_value = decrypt_value_helper(value=remaining_string, key="response_id", exception_type="debug")
 
         if decrypted_value is None:
             return False
@@ -241,7 +241,7 @@ class ResponsesIDSecurity(CustomLogger):
             return response_id, None, None
 
         remaining_string: Final = split_result[1]
-        decrypted_value = decrypt_value_helper(value=remaining_string, key="response_id", return_original_value=True)
+        decrypted_value = decrypt_value_helper(value=remaining_string, key="response_id", exception_type="debug")
 
         if decrypted_value is None:
             return response_id, None, None
