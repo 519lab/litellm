@@ -12,6 +12,7 @@ promoted to `main` and tagged.
 
 ### Fixed
 
+- Authorization hardening in the proxy: stricter handling of Responses API ids, key update budget fields, the workflow runs list and Vertex realtime location input. The root `docker-compose.yml` now publishes Postgres and Prometheus on 127.0.0.1 only instead of every interface
 - Pull requests into `develop` now run the full CI suite. 24 workflows (unit tests, lint, osv-scan, semgrep, CodeQL, zizmor and others) only triggered on PRs into upstream's `main`, `litellm_internal_staging` and `litellm_**` branches, so fork PRs, which all target `develop`, merged with only a handful of checks running
 - CI now runs on GitHub-hosted `ubuntu-24.04` runners. Every workflow targeted upstream's Blacksmith runners (`blacksmith-4vcpu-ubuntu-2404`), which this public fork has no access to, so jobs sat queued indefinitely. The `useblacksmith/checkout`, `setup-docker-builder` and `build-push-action` steps are replaced with the pinned official `actions/checkout`, `docker/setup-buildx-action` and `docker/build-push-action`
 - SCIM group endpoints no longer return 500 for teams without a `team_alias`. The group's `displayName` (and the group display on a SCIM user) now falls back to the team id, so `PATCH /scim/v2/Groups/{id}` no longer reports a failure for a membership change it already committed (#65)

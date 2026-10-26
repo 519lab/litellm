@@ -945,6 +945,29 @@ class TestUnrecognizedResponseIdIsRejected:
         assert data["response_id"] == issued_id
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("call_type", sorted(_ADDRESSED_ID_FIELD_BY_CALL_TYPE))
+    async def test_forged_plaintext_owner_record_is_rejected(self, mock_cache, salt_key_env, call_type):
+        """A client can't skip encryption by sending the decrypted owner-record format in plaintext."""
+        field = _ADDRESSED_ID_FIELD_BY_CALL_TYPE[call_type]
+        forged_id = (
+            f"resp_{SpecialEnums.LITELM_MANAGED_FILE_ID_PREFIX.value}:responses_api:"
+            "response_id:victimupstreamid;user_id:;team_id:"
+        )
+        data = {field: forged_id}
+
+        with pytest.raises(HTTPException) as exc_info:
+            await _hook().async_pre_call_hook(
+                user_api_key_dict=_auth(user_id="stranger-user", team_id="stranger-team"),
+                cache=mock_cache,
+                data=data,
+                call_type=call_type,
+            )
+
+        assert exc_info.value.status_code == 403
+        assert "allow_unmanaged_response_ids" in exc_info.value.detail
+        assert data[field] == forged_id
+
+    @pytest.mark.asyncio
     async def test_unmanaged_previous_response_id_cannot_seed_a_new_response(self, mock_cache, salt_key_env):
         data = {"model": "gpt-fake", "previous_response_id": _FABRICATED_UNMANAGED_ID}
 

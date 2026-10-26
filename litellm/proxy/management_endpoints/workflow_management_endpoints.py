@@ -201,8 +201,9 @@ async def list_workflow_runs(
     # Non-admin callers are scoped to their own key.
     if not _is_admin(user_api_key_dict):
         caller = _caller_key(user_api_key_dict)
-        if caller:
-            where["created_by"] = caller
+        if not caller:
+            return {"runs": [], "count": 0}
+        where["created_by"] = caller
 
     try:
         runs = await WorkflowRunRepository(prisma_client).table.find_many(
