@@ -1381,6 +1381,65 @@ def test_reload_keeps_custom_pricing_configured_on_litellm_params_for_a_db_model
         _invalidate_model_cost_lowercase_map()
 
 
+def test_reload_keeps_db_deployments_of_a_router_built_without_a_model_list():
+    """
+    A proxy whose config.yaml has an empty model_list builds Router() with no
+    model_list and adds every deployment from the DB afterwards. That router must
+    be replayed on a price data reload too: custom pricing, capability fields and
+    the registration of a model the catalog does not know all have to survive,
+    while a deployment deleted before the reload must stay gone.
+    """
+    saved_catalog = litellm.model_cost
+    fetched_catalog = copy.deepcopy(litellm.model_cost)
+    try:
+        router = Router()
+        router.add_deployment(
+            deployment=Deployment(
+                model_name="db-only-priced",
+                litellm_params=LiteLLM_Params(
+                    model="openai/db-only-priced-backend",
+                    api_key="sk-fake",
+                    input_cost_per_token=0.000123,
+                    output_cost_per_token=0.000456,
+                ),
+                model_info=ModelInfo(id="db-only-priced-id", mode="responses", supports_reasoning=True),
+            )
+        )
+        router.add_deployment(
+            deployment=Deployment(
+                model_name="db-only-unpriced",
+                litellm_params=LiteLLM_Params(model="openai/db-only-unpriced-backend", api_key="sk-fake"),
+                model_info=ModelInfo(id="db-only-unpriced-id", mode="chat"),
+            )
+        )
+        router.add_deployment(
+            deployment=Deployment(
+                model_name="db-only-deleted",
+                litellm_params=LiteLLM_Params(model="openai/db-only-deleted-backend", api_key="sk-fake"),
+                model_info=ModelInfo(id="db-only-deleted-id", mode="chat"),
+            )
+        )
+        router.delete_deployment(id="db-only-deleted-id")
+        litellm.model_cost.pop("db-only-deleted-id", None)
+        litellm.model_cost.pop("openai/db-only-deleted-backend", None)
+
+        _simulate_price_data_reload(copy.deepcopy(fetched_catalog))
+
+        priced = litellm.model_cost["db-only-priced-id"]
+        assert priced["input_cost_per_token"] == 0.000123
+        assert priced["output_cost_per_token"] == 0.000456
+        assert priced["supports_reasoning"] is True
+        assert priced["mode"] == "responses"
+        assert litellm.model_cost["openai/db-only-priced-backend"]["mode"] == "responses"
+        assert litellm.model_cost["db-only-unpriced-id"]["mode"] == "chat"
+        assert litellm.model_cost["openai/db-only-unpriced-backend"]["mode"] == "chat"
+        assert "db-only-deleted-id" not in litellm.model_cost
+        assert "openai/db-only-deleted-backend" not in litellm.model_cost
+    finally:
+        litellm.model_cost = saved_catalog
+        _invalidate_model_cost_lowercase_map()
+
+
 def test_replay_live_router_model_cost_rebuilds_every_live_router():
     """
     A process can hold more than one Router, so the rebuild has to fan out across
