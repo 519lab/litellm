@@ -173,6 +173,7 @@ class Status1(Enum):
     cancelled = "cancelled"
     incomplete = "incomplete"
     budget_exceeded = "budget_exceeded"
+    requires_continuation = "requires_continuation"
 
 
 class InteractionStatusUpdate(BaseModel):
@@ -341,6 +342,7 @@ class Status3(Enum):
     CANCELLED = "cancelled"
     INCOMPLETE = "incomplete"
     BUDGET_EXCEEDED = "budget_exceeded"
+    REQUIRES_CONTINUATION = "requires_continuation"
 
 
 class ModelOption(RootModel[str]):
