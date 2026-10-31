@@ -1,6 +1,9 @@
 name: "Unit Tests: LLM Provider Transformations"
 
 on:
+  push:
+    branches:
+      - develop
   pull_request:
     branches:
       - main

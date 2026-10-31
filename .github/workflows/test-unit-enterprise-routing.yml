@@ -1,6 +1,9 @@
 name: "Unit Tests: Enterprise, Google GenAI & Routing"
 
 on:
+  push:
+    branches:
+      - develop
   pull_request:
     branches:
       - main

@@ -1,6 +1,9 @@
 name: "Unit Tests: Proxy DB Operations"
 
 on:
+  push:
+    branches:
+      - develop
   pull_request:
     branches:
       - main

@@ -1,6 +1,9 @@
 name: "Unit Tests: Proxy Infrastructure"
 
 on:
+  push:
+    branches:
+      - develop
   pull_request:
     branches:
       - main
