@@ -1,6 +1,9 @@
 name: "Unit Tests: MCP, Secrets, Containers & Misc"
 
 on:
+  push:
+    branches:
+      - develop
   pull_request:
     branches:
       - main

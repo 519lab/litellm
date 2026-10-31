@@ -1,6 +1,9 @@
 name: "Unit Tests: Core Utilities"
 
 on:
+  push:
+    branches:
+      - develop
   pull_request:
     branches:
       - main

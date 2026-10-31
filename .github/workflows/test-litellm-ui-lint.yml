@@ -3,6 +3,9 @@ permissions:
   contents: read
 
 on:
+  push:
+    branches:
+      - develop
   pull_request:
     branches:
       - main
@@ -29,7 +32,7 @@ jobs:
       - name: Collect changed files
         id: changed
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           : > "$RUNNER_TEMP/prettier_files.txt"
           : > "$RUNNER_TEMP/eslint_files.txt"

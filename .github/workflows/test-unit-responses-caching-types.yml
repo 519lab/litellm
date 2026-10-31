@@ -1,6 +1,9 @@
 name: "Unit Tests: Responses, Caching & Types"
 
 on:
+  push:
+    branches:
+      - develop
   pull_request:
     branches:
       - main
