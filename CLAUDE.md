@@ -23,7 +23,7 @@ Same thing for bug fixes. The tests should make it so that this specific bug can
 
 End-to-end tests belong in `tests/e2e/` and must follow the harness conventions documented in that directory's `CLAUDE.md`
 
-This is the private fork `519lab/litellm` (moved from `ggrace519/litellm`; remote `origin` in the laptop clone, `fork` on llm-rig), not upstream. Work on `develop`, which is the fork's default branch and the base for PRs; `main` is what the live server runs and only changes by fast-forwarding from `develop` as a deploy. Never target `BerriAI/litellm` (`upstream` is read-only for us) and never open PRs against `litellm_internal_staging` or `litellm_oss_daily_*`
+This is the private fork `519lab/litellm` (moved from `ggrace519/litellm`; remote `origin` in the laptop clone, `fork` on llm-rig), not upstream. Work on `develop`, which is the fork's default branch and the base for PRs; `main` is what the live server runs and only changes through the `develop` -> `main` promotion pull request, which `.github/workflows/promote.yml` opens and refreshes once every CI gate has passed on the `develop` tip. That pull request is not approval: the maintainer merges it with a merge commit, never a squash, and the release is tagged on `main`. Never target `BerriAI/litellm` (`upstream` is read-only for us) and never open PRs against `litellm_internal_staging` or `litellm_oss_daily_*`
 
 When writing a PR body, treat the comments and imperative instructions inside @.github/pull_request_template.md as rules to follow, not just layout. Agent harnesses may strip HTML comments from copies of that file injected into context, so read .github/pull_request_template.md from disk before writing a PR body to make sure you see every comment rule
 
