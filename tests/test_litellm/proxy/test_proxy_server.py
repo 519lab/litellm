@@ -3698,6 +3698,77 @@ class TestPriceDataReloadIntegration:
             litellm.model_cost = original_model_cost
             _invalidate_model_cost_lowercase_map()
 
+    def test_scheduled_reload_replays_runtime_registrations(self):
+        """The scheduled reload is the trigger a pod hits on its own, so it must
+        both preserve runtime-registered model metadata and run to completion.
+        The swap happens early in the handler, so a failure in the bookkeeping
+        after it is swallowed by the surrounding except and would otherwise
+        leave the metadata correct while the path is quietly broken"""
+        from litellm import utils as litellm_utils
+        from litellm.proxy.proxy_server import ProxyConfig
+        from litellm.proxy.utils import litellm_config_cache
+
+        litellm_config_cache.flush_cache()
+        proxy_config = ProxyConfig()
+        mock_config = MagicMock()
+        mock_config.param_value = {"interval_hours": 6, "force_reload": True}
+        mock_prisma = MagicMock()
+        mock_prisma.db.litellm_config.find_unique = AsyncMock(return_value=mock_config)
+        mock_prisma.get_generic_data = AsyncMock(return_value=mock_config)
+        mock_prisma.db.litellm_config.upsert = AsyncMock(return_value=None)
+
+        original_model_cost = litellm.model_cost
+        original_registry = dict(litellm_utils._runtime_registered_model_cost)
+        try:
+            litellm.register_model(
+                model_cost={"custom/deployment-model": {"litellm_provider": "custom", "max_input_tokens": 4321}}
+            )
+
+            with (
+                patch(
+                    "litellm.litellm_core_utils.get_model_cost_map.get_model_cost_map",
+                    return_value={"gpt-4o": {"litellm_provider": "openai", "mode": "chat"}},
+                ),
+                patch("litellm.proxy.proxy_server.verbose_proxy_logger") as mock_logger,
+            ):
+                asyncio.run(proxy_config._check_and_reload_model_cost_map(mock_prisma))
+
+            mock_logger.exception.assert_not_called()
+            assert litellm.model_cost["custom/deployment-model"]["max_input_tokens"] == 4321
+            assert "gpt-4o" in litellm.model_cost
+            mock_prisma.db.litellm_config.upsert.assert_called_once()
+        finally:
+            litellm.model_cost = original_model_cost
+            litellm_utils._runtime_registered_model_cost.clear()
+            litellm_utils._runtime_registered_model_cost.update(original_registry)
+            _invalidate_model_cost_lowercase_map()
+            litellm_config_cache.flush_cache()
+
+    def test_swap_in_model_cost_map_counts_the_fetched_catalog_only(self):
+        """The count the reload endpoints report describes the price data, so it
+        is taken before the runtime registrations are written back into the same
+        dict. Counting after would inflate it by however many deployments and
+        overrides this pod happens to be carrying"""
+        from litellm import utils as litellm_utils
+        from litellm.proxy.proxy_server import _swap_in_model_cost_map
+
+        original_model_cost = litellm.model_cost
+        original_registry = dict(litellm_utils._runtime_registered_model_cost)
+        try:
+            litellm.register_model(
+                model_cost={"custom/deployment-model": {"litellm_provider": "custom", "max_input_tokens": 4321}}
+            )
+
+            models_count = _swap_in_model_cost_map({"gpt-4o": {"litellm_provider": "openai", "mode": "chat"}})
+
+            assert models_count == 1
+            assert litellm.model_cost["custom/deployment-model"]["max_input_tokens"] == 4321
+        finally:
+            litellm.model_cost = original_model_cost
+            litellm_utils._runtime_registered_model_cost.clear()
+            litellm_utils._runtime_registered_model_cost.update(original_registry)
+            _invalidate_model_cost_lowercase_map()
+
     def test_manual_reload_preserves_interval_hours(self):
         """Test that manual reload via /reload/model_cost_map preserves existing interval_hours.
 
