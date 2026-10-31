@@ -6,3 +6,7 @@ reason = "diskcache has no fixed release published; remove this entry once one e
 [[IgnoredVulns]]
 id = "GHSA-3cv6-jpf6-8222"
 reason = "Reported against this package's own version; the fix is backported on the fork (#44), so the 1.94.3 bump it asks for does not apply"
+
+[[IgnoredVulns]]
+id = "GHSA-7hp6-4w63-5g45"
+reason = "Salt-key reuse privilege escalation; upstream's session-token AES-GCM context fix (1.100.4, commit f7cd90f09e) is backported on the fork, so the version bump the advisory asks for does not apply"
