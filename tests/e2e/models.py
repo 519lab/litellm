@@ -94,6 +94,7 @@ class KeyInfo(BaseModel):
     budget_reset_at: str | None = None
     budget_id: str | None = None
     litellm_budget_table: LiteLLMBudgetTable | None = None
+    metadata: KeyMetadata | None = None
 
 
 class KeyInfoResponse(BaseModel):
