@@ -45,6 +45,8 @@ Python max line length is 120, not 88
 
 On a fresh worktree or clone, run `make bootstrap` before anything else. It provisions everything tests, `make pre-commit`, and a local proxy need
 
+Never run the full test suite locally (`make test-unit`, `pytest tests/test_litellm`, or any whole-directory run): it starts several xdist workers that each import all of litellm, and on a laptop it exhausts RAM and gets OOM-killed. Run only the test files mapped to what you changed, and leave the full suite to CI's sharded jobs
+
 Run tests before you commit. Also, run `make pre-commit` right before each commit, which generates types (as needed) and formats/lints your code. Any errors found must be fixed. It only runs when there are staged frontend and/or backend changes and calculates violations, generates types, etc. based on the worktree, so stage what you need or stash/delete unwanted files in litellm/ or ui/ (where backend and frontend lint run, respectively) before running it. If it fails because dashboard api types are stale, it already regenerated them for you. You just need to stage the schema.d.ts, re-run `make pre-commit` to confirm it passes, and commit. `make pre-commit` and `make lint` diff against `origin/litellm_internal_staging`, which on this fork resolves through the local `litellm_internal_staging` branch (their fetch step targets `origin`, this checkout). Before linting, run `git branch -f litellm_internal_staging fork/develop` so the delta gates measure only your unpushed work instead of the whole fork history; if `fork/develop` is stale, `git fetch fork` first
 
 In a plain GitHub clone of the fork (for example the laptop checkout at `~/coding-projects/litellm`), the fork is remote `origin` and `make lint`'s `git fetch origin litellm_internal_staging` fails because that branch does not exist on GitHub. Point the base ref at develop locally and run the same checks without the fetch: `git update-ref refs/remotes/origin/litellm_internal_staging refs/remotes/origin/develop`, then `make lint-install` once and `make -j 8 LINT_DEP_INSTALL= LINT_E2E_DEP_INSTALL= LINT_DEP_BASE= lint-checks`. `make pre-commit` calls `make lint`, so run the API-type step by hand when you touch `litellm/proxy` or `litellm/types`: `cd ui/litellm-dashboard && LITELLM_PYTHON="uv run --no-sync python" npm run gen:api` and check `git diff --stat src/lib/http/schema.d.ts`
@@ -119,10 +121,10 @@ Python tooling is `uv` (`make` targets wrap `uv run`). `make help` lists everyth
 
 ```bash
 make bootstrap                 # fresh clone/worktree: deps, prisma client, hooks
-make test-unit                 # tests/test_litellm, mocked only, -n 4
+make test-unit                 # tests/test_litellm, mocked only, -n 4; CI only, never run it locally (see above)
 uv run pytest tests/test_litellm/llms/anthropic/chat/test_anthropic_chat_transformation.py -v   # one file
 uv run pytest tests/test_litellm/test_utils.py -k "name_substring" -vv                           # one test
-make test-unit-llms | test-unit-proxy-core | test-unit-integrations ...   # CI matrix groups, see Makefile
+make test-unit-llms | test-unit-proxy-core | test-unit-integrations ...   # CI matrix groups, see Makefile; CI only, never run locally
 make test-llm-translation-single FILE=test_x.py   # tests/llm_translation, VCR-cached real-provider tests
 make lint                      # exactly what CI runs: ruff format check (diff-scoped), ruff, strict-rule budget gate, type-discipline gate, basedpyright, e2e basedpyright, circular-import and import-safety checks
 make format                    # ruff format over litellm/ (enterprise/ excluded); CONTRIBUTING.md still says black, that is stale
