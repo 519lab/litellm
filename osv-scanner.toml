@@ -10,3 +10,7 @@ reason = "Reported against this package's own version; the fix is backported on 
 [[IgnoredVulns]]
 id = "GHSA-7hp6-4w63-5g45"
 reason = "Salt-key reuse privilege escalation; upstream's session-token AES-GCM context fix (1.100.4, commit f7cd90f09e) is backported on the fork, so the version bump the advisory asks for does not apply"
+
+[[IgnoredVulns]]
+id = "GHSA-g5ff-637f-6q2m"
+reason = "vertex_ai_credentials arbitrary file read; the upstream fix (the alias added to the request-body blocklist, 1.95.0) is already on the fork via f4dc7555fb, so the version bump the advisory asks for does not apply"
