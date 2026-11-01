@@ -61,6 +61,7 @@ jobs:
       - name: Scan image for fixable HIGH/CRITICAL CVEs
         run: |
           "$RUNNER_TEMP/grype" litellm-image-scan:${{ github.sha }} \
+            --config .grype.yaml \
             --only-fixed \
             --fail-on high \
             --output table
