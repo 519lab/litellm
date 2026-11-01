@@ -1,5 +1,5 @@
 # Semantic cache configuration snippet.
-# Merge these sections into /home/ggrace/.config/litellm/config.yaml
+# Merge these sections into your proxy config.yaml
 # after completing the cut-over steps in DEMO.md (innovation/semantic-cache).
 
 model_list:

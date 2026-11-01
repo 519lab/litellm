@@ -3,8 +3,7 @@
 
 ## How this codebase stands today
 
-A private LiteLLM fork that fronts one llama.cpp server on llm-rig running Qwen3.6-35B-A3B,
-reached at `studio.gracebkp.cloud`. The traffic that matters is agentic: Claude Code on
+A LiteLLM fork that fronts one self-hosted llama.cpp server running Qwen3.6-35B-A3B. The traffic that matters is agentic: Claude Code on
 `/v1/messages`, Codex CLI on `/v1/responses`, opencode and n8n on `/v1/chat/completions`. The
 fork has a strong record of surgical protocol fixes on those bridges (about 40 since July), a
 clean dashboard rebuild, and a Prometheus scrape feeding a Grafana dashboard. Where it is
@@ -106,7 +105,7 @@ history against a 16k window exited 1 on develop. On the branch it wrote a `comp
 (trigger `auto`, preTokens 28081), re-sent 2.4k tokens and answered. Codex now reports
 `ContextWindowExceeded` instead of an opaque invalid request, but `codex exec` still stops
 there rather than compacting, which is why proposal 6 matters for Codex.
-**First step.** Merge the branch, then shrink a test slot and run one Claude Code turn on llm-rig.
+**First step.** Merge the branch, then shrink a test slot and run one Claude Code turn against the inference host.
 
 ### 2. Stop stripping constraints llama.cpp now enforces
 **Category:** performance / correctness · **Impact 4 · Novelty 4 · Effort 5 · Fit 5**
@@ -125,7 +124,7 @@ which keywords are accepted, and strip only those that fail. When nothing needs 
 is a no-op. Extend `_sanitize_schema` dispatch to the flat Responses tool shape and `input_schema`.
 If the live build already passes every probe, delete the hook outright; that is simpler still.
 **Effort.** 3 to 4 hours. Risk: the probe adds one tiny request per process start.
-**First step.** Greg runs `curl -s 127.0.0.1:56669/props | jq .build_info` on llm-rig. If the
+**First step.** Run `curl -s 127.0.0.1:56669/props | jq .build_info` on the inference host. If the
 build is at or near b11243, delete the hook.
 
 ### 3. Serve Claude Code through llama.cpp's native Anthropic endpoint
@@ -197,7 +196,7 @@ config references.
 **Implementation sketch.** A startup task beside the llamacpp hook fetches `/props` for each
 llama.cpp `api_base` and merges `max_input_tokens` into the router's model info. A read-only
 `GET /llamacpp/client-config` returns the snippets.
-**Effort.** 1 day. Risk: slot context changes when llm-rig is reconfigured, so refresh on
+**Effort.** 1 day. Risk: slot context changes when the inference host is reconfigured, so refresh on
 health checks.
 **First step.** Set Codex `model_context_window` by hand on one machine and confirm it
 compacts before the overflow that proposal 1 now reports cleanly.
@@ -222,8 +221,8 @@ count every heal.
 ### 8. Shadow-evaluate Qwen3.8-27B on real agent traffic
 **Category:** wow · **Impact 4 · Novelty 4 · Effort 2 · Fit 4**
 
-**The idea.** Before swapping the rig's model, mirror a sample of real Claude Code, Codex and
-n8n requests to a candidate llama.cpp (Qwen3.8-27B with MTP on llm-small or a second slot group).
+**The idea.** Before swapping the inference host's model, mirror a sample of real Claude Code, Codex and
+n8n requests to a candidate llama.cpp (Qwen3.8-27B with MTP on a second, smaller host or a second slot group).
 Score the paired outputs on tool-call schema validity, JSON validity, prefill and decode rates
 (from the fixed tracer), and whether both picked the same tool. The upgrade decision is then
 backed by your own workload instead of benchmarks.
@@ -234,7 +233,7 @@ mirroring, open), and TensorZero adaptive experiments.
 comparison job over spend logs. The dashboard gets one table.
 **Effort.** 3 to 5 days. Risk: the candidate competes for GPU memory if colocated, so run it on
 separate hardware.
-**First step.** Stand up Qwen3.8-27B on llm-small and point a single n8n workflow at it through a
+**First step.** Stand up Qwen3.8-27B on the smaller host and point a single n8n workflow at it through a
 second deployment.
 
 ## Killed ideas (and why)
@@ -256,7 +255,7 @@ second deployment.
 
 Merge the four defect branches and proposal 1 first; they are independent of each other and
 each is proven against a real llama.cpp. Then do the two cheap checks that gate everything else:
-the llm-rig build version (proposal 2) and the cache-hit panel (proposal 4). Proposal 3 and
+the inference host's llama.cpp build version (proposal 2) and the cache-hit panel (proposal 4). Proposal 3 and
 proposal 6 are the next highest value per hour. Proposal 5 only if proposal 4 shows eviction.
 Proposals 7 and 8 are the ambitious pair once the plumbing is honest.
 
@@ -427,7 +426,7 @@ in the LiteLLM verbose log before wiring any OTLP receiver.
 **Category:** architecture / DX
 **Impact 3 · Novelty 3 · Effort 5 · Fit 5**
 
-**The idea.** `llamacpp_hook.py` currently lives in `/home/ggrace/.config/litellm/` and is
+**The idea.** `llamacpp_hook.py` currently lives in `~/.config/litellm/` and is
 referenced by filesystem path in `config.yaml`. It can't be versioned with the fork,
 tested independently, or discovered without reading the config. Move it to
 `litellm/proxy/hooks/llamacpp/`, register it as a first-class module, and wire it up so
@@ -442,7 +441,7 @@ config-path hacks.
 - Move the sanitization logic verbatim; add a unit test
   `tests/test_litellm/proxy/hooks/test_llamacpp_hook.py` covering the five failure modes.
 - Update `config.yaml`: `callbacks: [litellm.proxy.hooks.llamacpp.proxy_handler_instance]`
-- Delete the external file from `/home/ggrace/.config/litellm/`.
+- Delete the external file from `~/.config/litellm/`.
 **Effort.** 3 hours. Risk: none — pure move, same logic.
 **First step.** `mkdir -p litellm/proxy/hooks/llamacpp && cp ~/.config/litellm/llamacpp_hook.py litellm/proxy/hooks/llamacpp/main.py`
 

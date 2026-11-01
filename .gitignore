@@ -141,3 +141,6 @@ crash.*.log
 .coverage
 
 ui/litellm-dashboard/out/
+
+# Per-machine Claude Code instructions (deployment hosts, paths)
+CLAUDE.local.md

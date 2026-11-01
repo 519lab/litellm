@@ -117,4 +117,4 @@ jobs:
     uses: ggrace519/.github/.github/workflows/promote.yml@56da419a93d4eca7fe1771297dc734fbd9c39fb4 # v1.0.2
     with:
       ref: ${{ needs.gate.outputs.sha }}
-      merge-note: "Merging deploys nothing by itself. The live proxy on llm-rig picks up main only after `git -C ~/litellm-live merge --ff-only develop` and `sudo systemctl restart litellm`. Roll the CHANGELOG `[Unreleased]` entries into a dated version heading before merging, then tag the release on main"
+      merge-note: "Merging deploys nothing by itself; the deployment picks up main through its own deploy step. Roll the CHANGELOG `[Unreleased]` entries into a dated version heading before merging, then tag the release on main"
