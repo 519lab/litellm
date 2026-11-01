@@ -2465,6 +2465,46 @@ async def test_user_update_rejects_silent_create_for_non_proxy_admin(mocker):
     assert exc.value.status_code == 404
 
 
+@pytest.mark.parametrize(
+    "caller_id, existing_active, expect_blocked",
+    [
+        ("admin-1", True, True),
+        ("admin-1", None, True),
+        ("admin-1", False, False),
+        ("admin-2", True, False),
+    ],
+)
+@pytest.mark.asyncio
+async def test_user_update_rejects_self_scim_deactivation(mocker, caller_id, existing_active, expect_blocked):
+    from fastapi import HTTPException
+
+    from litellm.proxy._types import UpdateUserRequest, UserAPIKeyAuth
+    from litellm.proxy.management_endpoints.internal_user_endpoints import (
+        _update_single_user_helper,
+    )
+
+    existing_metadata = {} if existing_active is None else {"scim_active": existing_active}
+    existing_row = mocker.MagicMock()
+    existing_row.model_dump.return_value = {"user_id": "admin-1", "metadata": existing_metadata}
+    mock_prisma_client = mocker.MagicMock()
+    mock_prisma_client.db.litellm_usertable.find_first = mocker.AsyncMock(return_value=existing_row)
+    mock_prisma_client.update_data = mocker.AsyncMock(return_value={"data": {"user_id": "admin-1"}})
+    mocker.patch("litellm.proxy.proxy_server.prisma_client", mock_prisma_client)
+
+    user_request = UpdateUserRequest(user_id="admin-1", metadata={"scim_active": False})
+    caller = UserAPIKeyAuth(user_id=caller_id, user_role=LitellmUserRoles.PROXY_ADMIN)
+
+    if expect_blocked:
+        with pytest.raises(HTTPException) as exc:
+            await _update_single_user_helper(user_request=user_request, user_api_key_dict=caller)
+        assert exc.value.status_code == 400
+        mock_prisma_client.update_data.assert_not_called()
+        return
+
+    await _update_single_user_helper(user_request=user_request, user_api_key_dict=caller)
+    assert mock_prisma_client.update_data.await_args.kwargs["data"]["metadata"]["scim_active"] is False
+
+
 # =====================================================================
 # /v2/user/info endpoint tests
 # =====================================================================

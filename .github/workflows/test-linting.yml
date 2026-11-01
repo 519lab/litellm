@@ -1,9 +1,13 @@
 name: LiteLLM Linting
 
 on:
+  push:
+    branches:
+      - develop
   pull_request:
     branches:
       - main
+      - develop
       - litellm_internal_staging
       - litellm_oss_staging
       - "litellm_**"
@@ -13,16 +17,16 @@ permissions:
 
 jobs:
   lint:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     steps:
-      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         # Check out the PR head, not the default refs/pull/N/merge: the merge ref
         # folds in newer base commits, which the diff-based gates (ruff delta,
         # Any-discipline) would otherwise blame on this branch.
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           clean: true
           persist-credentials: false
@@ -61,7 +65,7 @@ jobs:
 
       - name: Check ruff format
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           git diff --name-only --diff-filter=ACMR "$BASE_SHA"...HEAD -- 'litellm/**/*.py' | grep -v '^litellm/enterprise/' > "$RUNNER_TEMP/ruff_format_files.txt" || true
           if [ ! -s "$RUNNER_TEMP/ruff_format_files.txt" ]; then
@@ -87,13 +91,13 @@ jobs:
 
       - name: Check strict-rule budget (delta vs base)
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           uv run --no-sync python scripts/ruff_strict_gate.py --base "$BASE_SHA"
 
       - name: Check type-discipline budget (mutable collections / casts / type guards / kwargs / unexplained suppressions, delta vs base)
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           uv run --no-sync python scripts/type_discipline_gate.py --base "$BASE_SHA"
 
@@ -103,13 +107,13 @@ jobs:
 
       - name: Check basedpyright budget (delta vs base)
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           (uv run --no-sync basedpyright --outputjson || true) | uv run --no-sync python scripts/type_check_gate.py --base "$BASE_SHA"
 
       - name: Check tests/e2e basedpyright (zero errors)
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           if git diff --name-only --diff-filter=ACMRD "$BASE_SHA"...HEAD -- 'tests/e2e/**/*.py' | grep -q .; then
             uv run --no-sync basedpyright tests/e2e
@@ -132,13 +136,13 @@ jobs:
   # must be kept OUT of the branch-protection required-checks list so a justified
   # bump can still be merged by a human who has seen and accepted the red.
   budget-ratchet:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
 
     steps:
-      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -150,18 +154,18 @@ jobs:
 
       - name: Ratchet check (budgets may only decrease; non-gating)
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           python scripts/budget_ratchet_check.py --base "$BASE_SHA"
 
   secret-scan:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
 
     steps:
-      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false

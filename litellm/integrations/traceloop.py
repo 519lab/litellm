@@ -36,7 +36,7 @@ class TraceloopLogger:
         level="DEFAULT",
         status_message=None,
     ):
-        from opentelemetry.semconv.ai import SpanAttributes
+        from opentelemetry.semconv_ai import SpanAttributes  # pyright: ignore[reportMissingTypeStubs]  # package ships no py.typed
         from opentelemetry.trace import SpanKind, Status, StatusCode
 
         try:

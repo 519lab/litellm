@@ -845,7 +845,7 @@ def test_operation_exception_log_event_emitted_on_failed_llm_call():
     (log,) = log_exporter.get_finished_logs()
     record = log.log_record
 
-    assert record.attributes["event.name"] == GenAIEvent.OPERATION_EXCEPTION
+    assert record.event_name == GenAIEvent.OPERATION_EXCEPTION
     assert record.severity_number == SeverityNumber.WARN
     assert record.attributes[ExceptionEvent.TYPE] == "RateLimitError"
     assert record.attributes[ExceptionEvent.MESSAGE] == "rate limited"

@@ -10,7 +10,7 @@ emitting that event; the exporter pipeline it rides is built in
 
 from dataclasses import dataclass
 
-from opentelemetry._events import Event, EventLogger
+from opentelemetry._logs import Logger, LogRecord
 from opentelemetry._logs.severity import SeverityNumber
 from opentelemetry.trace import SpanContext
 
@@ -19,7 +19,7 @@ from litellm.integrations.otel.model.semconv import ExceptionEvent, GenAIEvent
 
 @dataclass(frozen=True, slots=True)
 class GenAIEventRecorder:
-    event_logger: EventLogger
+    event_logger: Logger
 
     def record_operation_exception(
         self,
@@ -34,8 +34,8 @@ class GenAIEventRecorder:
         # conditional on the payload carrying one.
         stacktrace = ((ExceptionEvent.STACKTRACE, stack_trace),) if stack_trace else ()
         self.event_logger.emit(
-            Event(
-                name=GenAIEvent.OPERATION_EXCEPTION,
+            LogRecord(
+                event_name=GenAIEvent.OPERATION_EXCEPTION,
                 timestamp=timestamp_ns,
                 trace_id=span_context.trace_id,
                 span_id=span_context.span_id,

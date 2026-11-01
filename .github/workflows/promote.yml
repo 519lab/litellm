@@ -1,0 +1,120 @@
+name: promote
+
+# Opens or refreshes the develop -> main promotion pull request once every CI gate has passed on
+# the current develop tip. CI is split across many workflows, and workflow_run fires once per
+# workflow, so the gate job only lets the run through when all of them have succeeded for that
+# commit. The list below must match REQUIRED_WORKFLOWS in the gate job.
+on:
+  workflow_run:  # zizmor: ignore[dangerous-triggers]  only push runs on develop pass the gate, and nothing from the triggering run is checked out
+    workflows:
+      - OSV Scan
+      - Code Quality Checks
+      - LiteLLM Linting
+      - UI Build Check
+      - UI Lint
+      - LiteLLM MCP Tests (folder - tests/mcp_tests)
+      - Semgrep
+      - Test Proxy SERVER_ROOT_PATH Routing
+      - "Unit Tests: Core Utilities"
+      - "Unit Tests: Documentation Validation"
+      - "Unit Tests: Enterprise, Google GenAI & Routing"
+      - "Unit Tests: Integrations (Callbacks & Logging)"
+      - "Unit Tests: LLM Provider Transformations"
+      - "Unit Tests: MCP, Secrets, Containers & Misc"
+      - "Unit Tests: Proxy Auth & Key Management"
+      - "Unit Tests: Proxy DB Operations"
+      - "Unit Tests: Proxy API Endpoints"
+      - "Unit Tests: Proxy Infrastructure"
+      - "Unit Tests: Proxy Legacy Tests"
+      - "Unit Tests: Responses, Caching & Types"
+      - GitHub Actions Security Analysis
+    types: [completed]
+    branches: [develop]
+  workflow_dispatch:
+
+permissions: {}
+
+# Push-triggered and manual runs queue in one group without cancelling each other, so a late event
+# for an older commit cannot cancel the run that sees every gate green. pull_request completions
+# (the promotion PR's own CI also has develop as its head branch) get their own group and are
+# skipped by the gate's `if`, as in the shared workflow's README.
+concurrency:
+  group: >-
+    ${{ (github.event_name == 'workflow_dispatch' || github.event.workflow_run.event == 'push')
+        && 'promote-develop-to-main' || format('promote-skip-{0}', github.run_id) }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+      sha: ${{ steps.check.outputs.sha }}
+    steps:
+      - name: Check every CI gate passed on the develop tip
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_SHA: ${{ github.event.workflow_run.head_sha }}
+          REQUIRED_WORKFLOWS: |
+            OSV Scan
+            Code Quality Checks
+            LiteLLM Linting
+            UI Build Check
+            UI Lint
+            LiteLLM MCP Tests (folder - tests/mcp_tests)
+            Semgrep
+            Test Proxy SERVER_ROOT_PATH Routing
+            Unit Tests: Core Utilities
+            Unit Tests: Documentation Validation
+            Unit Tests: Enterprise, Google GenAI & Routing
+            Unit Tests: Integrations (Callbacks & Logging)
+            Unit Tests: LLM Provider Transformations
+            Unit Tests: MCP, Secrets, Containers & Misc
+            Unit Tests: Proxy Auth & Key Management
+            Unit Tests: Proxy DB Operations
+            Unit Tests: Proxy API Endpoints
+            Unit Tests: Proxy Infrastructure
+            Unit Tests: Proxy Legacy Tests
+            Unit Tests: Responses, Caching & Types
+            GitHub Actions Security Analysis
+        run: |
+          set -euo pipefail
+          tip=$(gh api "repos/$GITHUB_REPOSITORY/branches/develop" --jq .commit.sha)
+          sha=${EVENT_SHA:-$tip}
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          if [ "$sha" != "$tip" ]; then
+            echo "Run is for $sha but develop is now at $tip; a later run decides."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          runs=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$sha&event=push&per_page=100" \
+            --jq '.workflow_runs[] | {name, status, conclusion, created_at}' | jq -s .)
+          ready=true
+          while IFS= read -r name; do
+            [ -n "$name" ] || continue
+            state=$(jq -r --arg n "$name" \
+              '[.[] | select(.name == $n)] | sort_by(.created_at) | last | if . == null then "missing" else "\(.status)/\(.conclusion)" end' \
+              <<<"$runs")
+            echo "$name: $state"
+            [ "$state" = "completed/success" ] || ready=false
+          done <<<"$REQUIRED_WORKFLOWS"
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
+
+  promote:
+    needs: gate
+    if: needs.gate.outputs.ready == 'true'
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: ggrace519/.github/.github/workflows/promote.yml@56da419a93d4eca7fe1771297dc734fbd9c39fb4 # v1.0.2
+    with:
+      ref: ${{ needs.gate.outputs.sha }}
+      merge-note: "Merging deploys nothing by itself; the deployment picks up main through its own deploy step. Roll the CHANGELOG `[Unreleased]` entries into a dated version heading before merging, then tag the release on main"

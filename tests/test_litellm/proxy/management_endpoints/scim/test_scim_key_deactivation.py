@@ -541,3 +541,173 @@ async def test_scim_put_user_explicit_active_false_blocks_keys():
     assert update_kwargs["where"] == {"token": "hash-block-me"}
     assert update_kwargs["data"]["blocked"] is True
     assert '"scim_blocked": true' in update_kwargs["data"]["metadata"]
+
+
+class _FakeTokenTable:
+
+    def __init__(self, rows):
+        self.rows = rows
+
+    async def find_many(self, where):
+        return [r for r in self.rows if all(getattr(r, k) == v for k, v in where.items())]
+
+    async def update(self, where, data):
+        import json
+
+        row = next(r for r in self.rows if r.token == where["token"])
+        row.blocked = data["blocked"]
+        row.metadata = json.loads(data["metadata"])
+        return row
+
+
+def _team_key(token: str, team_id: str, blocked=None, metadata=None):
+    row = _build_token_row(token, "user-1", blocked, metadata)
+    row.team_id = team_id
+    return row
+
+
+def _prisma_with_token_table(table):
+    mock_client = MagicMock()
+    mock_client.db.litellm_verificationtoken = table
+    return mock_client
+
+
+@pytest.mark.asyncio
+async def test_scim_team_removal_blocks_team_keys_instead_of_deleting():
+    from litellm.proxy.management_endpoints.scim.scim_v2 import (
+        SCIM_TEAM_REMOVED_METADATA_KEY,
+        patch_team_membership,
+    )
+
+    removed_team_key = _team_key("k-a", "team-a")
+    other_team_key = _team_key("k-b", "team-b")
+    table = _FakeTokenTable([removed_team_key, other_team_key])
+
+    with (
+        patch("litellm.proxy.proxy_server.prisma_client", _prisma_with_token_table(table)),
+        patch("litellm.proxy.management_endpoints.scim.scim_v2.remove_team_member", AsyncMock()) as mock_remove,
+        patch("litellm.proxy.management_endpoints.scim.scim_v2._delete_cache_key_object", AsyncMock()) as mock_cache,
+    ):
+        await patch_team_membership(
+            user_id="user-1", teams_ids_to_add_user_to=[], teams_ids_to_remove_user_from=["team-a"]
+        )
+
+    assert mock_remove.await_args.kwargs["delete_member_keys"] is False
+    assert removed_team_key.blocked is True
+    assert removed_team_key.metadata == {SCIM_TEAM_REMOVED_METADATA_KEY: True}
+    assert other_team_key.blocked is None
+    assert mock_cache.await_args.kwargs["hashed_token"] == "k-a"
+
+
+@pytest.mark.asyncio
+async def test_scim_team_readd_unblocks_only_keys_blocked_by_team_removal():
+    from litellm.proxy.management_endpoints.scim.scim_v2 import (
+        SCIM_TEAM_REMOVED_METADATA_KEY,
+        patch_team_membership,
+    )
+
+    scim_blocked_key = _team_key("k-a", "team-a", blocked=True, metadata={SCIM_TEAM_REMOVED_METADATA_KEY: True})
+    manually_blocked_key = _team_key("k-m", "team-a", blocked=True)
+    table = _FakeTokenTable([scim_blocked_key, manually_blocked_key])
+
+    with (
+        patch("litellm.proxy.proxy_server.prisma_client", _prisma_with_token_table(table)),
+        patch("litellm.proxy.management_endpoints.scim.scim_v2.team_member_add", AsyncMock()),
+        patch("litellm.proxy.management_endpoints.scim.scim_v2._delete_cache_key_object", AsyncMock()),
+    ):
+        await patch_team_membership(
+            user_id="user-1", teams_ids_to_add_user_to=["team-a"], teams_ids_to_remove_user_from=[]
+        )
+
+    assert scim_blocked_key.blocked is False
+    assert scim_blocked_key.metadata == {}
+    assert manually_blocked_key.blocked is True
+
+
+@pytest.mark.asyncio
+async def test_scim_team_add_failure_leaves_team_keys_blocked():
+    from litellm.proxy.management_endpoints.scim.scim_v2 import (
+        SCIM_TEAM_REMOVED_METADATA_KEY,
+        patch_team_membership,
+    )
+
+    scim_blocked_key = _team_key("k-a", "team-a", blocked=True, metadata={SCIM_TEAM_REMOVED_METADATA_KEY: True})
+    table = _FakeTokenTable([scim_blocked_key])
+
+    with (
+        patch("litellm.proxy.proxy_server.prisma_client", _prisma_with_token_table(table)),
+        patch(
+            "litellm.proxy.management_endpoints.scim.scim_v2.team_member_add",
+            AsyncMock(side_effect=RuntimeError("db down")),
+        ),
+        patch("litellm.proxy.management_endpoints.scim.scim_v2._delete_cache_key_object", AsyncMock()),
+    ):
+        await patch_team_membership(
+            user_id="user-1", teams_ids_to_add_user_to=["team-a"], teams_ids_to_remove_user_from=[]
+        )
+
+    assert scim_blocked_key.blocked is True
+
+
+@pytest.mark.asyncio
+async def test_user_reactivation_keeps_team_removed_keys_blocked():
+    from litellm.proxy.management_endpoints.scim.scim_v2 import SCIM_TEAM_REMOVED_METADATA_KEY
+
+    team_removed_key = _team_key("k-a", "team-a", blocked=True, metadata={SCIM_TEAM_REMOVED_METADATA_KEY: True})
+    plain_key = _team_key("k-p", "team-b")
+    table = _FakeTokenTable([team_removed_key, plain_key])
+
+    with (
+        patch("litellm.proxy.proxy_server.prisma_client", _prisma_with_token_table(table)),
+        patch("litellm.proxy.management_endpoints.scim.scim_v2._delete_cache_key_object", AsyncMock()),
+    ):
+        await _set_user_keys_blocked(user_id="user-1", blocked=True)
+        assert plain_key.blocked is True
+        assert team_removed_key.blocked is True
+        await _set_user_keys_blocked(user_id="user-1", blocked=False)
+
+    assert plain_key.blocked is False
+    assert team_removed_key.blocked is True
+    assert team_removed_key.metadata == {SCIM_TEAM_REMOVED_METADATA_KEY: True}
+
+
+@pytest.mark.asyncio
+async def test_scim_team_removal_blocks_keys_even_if_membership_removal_fails():
+    from litellm.proxy.management_endpoints.scim.scim_v2 import patch_team_membership
+
+    team_key = _team_key("k-a", "team-a")
+    table = _FakeTokenTable([team_key])
+
+    with (
+        patch("litellm.proxy.proxy_server.prisma_client", _prisma_with_token_table(table)),
+        patch(
+            "litellm.proxy.management_endpoints.scim.scim_v2.remove_team_member",
+            AsyncMock(side_effect=RuntimeError("membership write failed")),
+        ),
+        patch("litellm.proxy.management_endpoints.scim.scim_v2._delete_cache_key_object", AsyncMock()),
+    ):
+        await patch_team_membership(
+            user_id="user-1", teams_ids_to_add_user_to=[], teams_ids_to_remove_user_from=["team-a"]
+        )
+
+    assert team_key.blocked is True
+
+
+@pytest.mark.asyncio
+async def test_stale_team_marker_on_admin_unblocked_key_does_not_reblock_it():
+    from litellm.proxy.management_endpoints.scim.scim_v2 import SCIM_TEAM_REMOVED_METADATA_KEY
+
+    admin_unblocked_key = _team_key(
+        "k-a", "team-a", blocked=False, metadata={SCIM_TEAM_REMOVED_METADATA_KEY: True, "note": "keep"}
+    )
+    table = _FakeTokenTable([admin_unblocked_key])
+
+    with (
+        patch("litellm.proxy.proxy_server.prisma_client", _prisma_with_token_table(table)),
+        patch("litellm.proxy.management_endpoints.scim.scim_v2._delete_cache_key_object", AsyncMock()),
+    ):
+        await _set_user_keys_blocked(user_id="user-1", blocked=True)
+        await _set_user_keys_blocked(user_id="user-1", blocked=False)
+
+    assert admin_unblocked_key.blocked is False
+    assert admin_unblocked_key.metadata == {"note": "keep"}

@@ -88,9 +88,9 @@ def test_agentops_exporter_mints_jwt_lazily(monkeypatch):
     exporter = _build_agentops_exporter(spec)
 
     # No auth header until the first export triggers the (off-loop) fetch.
-    assert "Authorization" not in exporter._session.headers
+    assert "Authorization" not in exporter._auth_session.headers
     exporter._ensure_authenticated()
-    assert exporter._session.headers["Authorization"] == "Bearer jwt-xyz"
+    assert exporter._auth_session.headers["Authorization"] == "Bearer jwt-xyz"
 
     # Cached: a second resolution does not re-fetch.
     calls = []
@@ -101,6 +101,26 @@ def test_agentops_exporter_mints_jwt_lazily(monkeypatch):
     )
     exporter._ensure_authenticated()
     assert calls == []
+
+
+def test_agentops_exporter_sends_minted_jwt_on_export(monkeypatch, requests_mock):
+    pytest.importorskip("opentelemetry.exporter.otlp.proto.http.trace_exporter")
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+
+    monkeypatch.setattr(agentops_mod, "_fetch_agentops_jwt", lambda _k: {"token": "jwt-xyz"})
+    endpoint = "https://otlp.agentops.test/v1/traces"
+    requests_mock.post(endpoint, status_code=200)
+    exporter = _build_agentops_exporter(
+        ExporterSpec(kind=_AGENTOPS_EXPORTER_KIND, endpoint=endpoint, options={"api_key": "ak"})
+    )
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+
+    provider.get_tracer("t").start_span("call").end()
+
+    assert requests_mock.call_count == 1
+    assert requests_mock.last_request.headers["Authorization"] == "Bearer jwt-xyz"
 
 
 def test_agentops_exporter_tolerates_fetch_failure(monkeypatch):
@@ -118,7 +138,7 @@ def test_agentops_exporter_tolerates_fetch_failure(monkeypatch):
         )
     )
     exporter._ensure_authenticated()  # must not raise
-    assert "Authorization" not in exporter._session.headers
+    assert "Authorization" not in exporter._auth_session.headers
 
 
 def test_fetch_jwt_uses_owned_client_not_shared_pool(monkeypatch):

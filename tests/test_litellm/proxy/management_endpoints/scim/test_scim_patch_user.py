@@ -80,7 +80,7 @@ async def test_patch_user_updates_fields():
 
 
 @pytest.mark.asyncio
-async def test_patch_user_manages_group_memberships():
+async def test_patch_user_ignores_read_only_groups():
     mock_user = LiteLLM_UserTable(
         user_id="user-2",
         user_email="test@example.com",
@@ -89,77 +89,41 @@ async def test_patch_user_manages_group_memberships():
         metadata={},
     )
 
-    # Create updated user with final teams
-    updated_user = LiteLLM_UserTable(
-        user_id="user-2",
-        user_email="test@example.com",
-        user_alias="Old",
-        teams=["new-team"],
-        metadata={"scim_metadata": {}},
-    )
-
-    async def mock_update(*, where, data):
-        # Return the updated user
-        return updated_user
-
     mock_client = MagicMock()
     mock_db = MagicMock()
     mock_client.db = mock_db
     mock_db.litellm_usertable.find_unique = AsyncMock(return_value=mock_user)
-    mock_db.litellm_usertable.update = AsyncMock(side_effect=mock_update)
-    mock_db.litellm_teamtable.find_unique = AsyncMock(return_value=None)
+    mock_db.litellm_usertable.update = AsyncMock(return_value=mock_user)
 
-    # Mock the transformation function to return a proper SCIMUser
     mock_scim_user = SCIMUser(
         schemas=["urn:ietf:params:scim:schemas:core:2.0:User"],
         id="user-2",
         userName="user-2",
-        displayName="Old",
-        name=SCIMUserName(familyName="Family", givenName="Old"),
-        emails=[SCIMUserEmail(value="test@example.com")],
         active=True,
     )
-
-    async def mock_add(data, user_api_key_dict):
-        # Mock team member add
-        pass
-
-    async def mock_delete(data, user_api_key_dict):
-        # Mock team member delete
-        pass
 
     patch_ops = SCIMPatchOp(
         Operations=[
             SCIMPatchOperation(op="add", path="groups", value=[{"value": "new-team"}]),
-            SCIMPatchOperation(
-                op="remove", path="groups", value=[{"value": "old-team"}]
-            ),
+            SCIMPatchOperation(op="remove", path="groups", value=[{"value": "old-team"}]),
+            SCIMPatchOperation(op="replace", path="groups", value=[]),
         ]
     )
 
     with (
         patch("litellm.proxy.proxy_server.prisma_client", mock_client),
-        patch(
-            "litellm.proxy.management_endpoints.scim.scim_v2.team_member_add",
-            AsyncMock(side_effect=mock_add),
-        ) as mock_add_fn,
-        patch(
-            "litellm.proxy.management_endpoints.scim.scim_v2.team_member_delete",
-            AsyncMock(side_effect=mock_delete),
-        ) as mock_del_fn,
+        patch("litellm.proxy.management_endpoints.scim.scim_v2.team_member_add", AsyncMock()) as mock_add_fn,
+        patch("litellm.proxy.management_endpoints.scim.scim_v2.remove_team_member", AsyncMock()) as mock_remove_fn,
         patch(
             "litellm.proxy.management_endpoints.scim.scim_v2.ScimTransformations.transform_litellm_user_to_scim_user",
             AsyncMock(return_value=mock_scim_user),
         ),
     ):
-        result = await patch_user(user_id="user-2", patch_ops=patch_ops)
+        await patch_user(user_id="user-2", patch_ops=patch_ops)
 
-    assert mock_add_fn.called
-    assert mock_del_fn.called
-    # Check that the database update was called with the correct teams
-    call_args = mock_db.litellm_usertable.update.call_args
-    assert "new-team" in call_args[1]["data"]["teams"]
-    assert result == mock_scim_user
+    mock_add_fn.assert_not_called()
+    mock_remove_fn.assert_not_called()
+    assert "teams" not in mock_db.litellm_usertable.update.call_args[1]["data"]
 
 
 @pytest.mark.asyncio
@@ -355,7 +319,7 @@ def test_apply_patch_ops_replace_entitlements_writes_canonical_key():
         ]
     )
 
-    update_data, _ = _apply_patch_ops(
+    update_data = _apply_patch_ops(
         existing_user=_user_with_metadata({}), patch_ops=patch_ops
     )
 
@@ -373,7 +337,7 @@ def test_apply_patch_ops_add_roles_appends_to_existing():
         ]
     )
 
-    update_data, _ = _apply_patch_ops(
+    update_data = _apply_patch_ops(
         existing_user=_user_with_metadata({"scim_roles": [{"value": "viewer"}]}),
         patch_ops=patch_ops,
     )
@@ -389,7 +353,7 @@ def test_apply_patch_ops_remove_entitlements_clears_canonical_key():
         Operations=[SCIMPatchOperation(op="remove", path="entitlements")]
     )
 
-    update_data, _ = _apply_patch_ops(
+    update_data = _apply_patch_ops(
         existing_user=_user_with_metadata(
             {"scim_entitlements": [{"value": "jira-software"}]}
         ),
@@ -409,7 +373,7 @@ def test_apply_patch_ops_pathless_value_dict_handles_roles():
         ]
     )
 
-    update_data, _ = _apply_patch_ops(
+    update_data = _apply_patch_ops(
         existing_user=_user_with_metadata({}), patch_ops=patch_ops
     )
 
@@ -465,3 +429,41 @@ def test_apply_patch_ops_filtered_path_raises_400_instead_of_junk_metadata():
         )
 
     assert exc_info.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_put_user_with_groups_omitting_existing_teams_keeps_membership():
+    from litellm.proxy.management_endpoints.scim.scim_v2 import update_user
+    from litellm.types.proxy.management_endpoints.scim_v2 import SCIMUserGroup
+
+    mock_user = LiteLLM_UserTable(
+        user_id="user-4",
+        user_email="test@example.com",
+        teams=["hand-made-team"],
+        metadata={"scim_active": True},
+    )
+
+    mock_client = MagicMock()
+    mock_client.db.litellm_usertable.find_unique = AsyncMock(return_value=mock_user)
+    mock_client.db.litellm_usertable.update = AsyncMock(return_value=mock_user)
+
+    scim_user = SCIMUser(
+        schemas=["urn:ietf:params:scim:schemas:core:2.0:User"],
+        userName="user-4",
+        emails=[SCIMUserEmail(value="test@example.com")],
+        groups=[SCIMUserGroup(value="idp-group")],
+        active=True,
+    )
+
+    with (
+        patch("litellm.proxy.proxy_server.prisma_client", mock_client),
+        patch("litellm.proxy.management_endpoints.scim.scim_v2.patch_team_membership", AsyncMock()) as mock_membership,
+        patch(
+            "litellm.proxy.management_endpoints.scim.scim_v2.ScimTransformations.transform_litellm_user_to_scim_user",
+            AsyncMock(return_value=scim_user),
+        ),
+    ):
+        await update_user(user_id="user-4", user=scim_user)
+
+    mock_membership.assert_not_called()
+    assert "teams" not in mock_client.db.litellm_usertable.update.call_args[1]["data"]

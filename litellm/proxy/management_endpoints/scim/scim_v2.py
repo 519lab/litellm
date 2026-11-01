@@ -47,8 +47,8 @@ from litellm.proxy.management_endpoints.scim.scim_transformations import (
 )
 from litellm.proxy.management_endpoints.team_endpoints import (
     new_team,
+    remove_team_member,
     team_member_add,
-    team_member_delete,
 )
 from litellm.proxy.utils import _premium_user_check, handle_exception_on_proxy
 from litellm.repositories.table_repositories import (
@@ -440,74 +440,47 @@ async def _get_team_members_display(member_ids: List[str]) -> List[SCIMMember]:
     return members
 
 
-async def _handle_team_membership_changes(user_id: str, existing_teams: List[str], new_teams: List[str]) -> None:
-    """Handle adding/removing user from teams based on changes."""
-    existing_teams_set = set(existing_teams)
-    new_teams_set = set(new_teams)
-
-    teams_to_add = new_teams_set - existing_teams_set
-    teams_to_remove = existing_teams_set - new_teams_set
-
-    if teams_to_add or teams_to_remove:
-        await patch_team_membership(
-            user_id=user_id,
-            teams_ids_to_add_user_to=list(teams_to_add),
-            teams_ids_to_remove_user_from=list(teams_to_remove),
-        )
-
-
 SCIM_BLOCKED_METADATA_KEY = "scim_blocked"
+SCIM_TEAM_REMOVED_METADATA_KEY = "scim_team_removed"
+_SCIM_KEY_BLOCK_MARKERS = (SCIM_BLOCKED_METADATA_KEY, SCIM_TEAM_REMOVED_METADATA_KEY)
 
 
-def _key_was_scim_blocked(metadata: Any) -> bool:
-    """True if a verification token carries the SCIM-block marker in metadata."""
-    return isinstance(metadata, dict) and metadata.get(SCIM_BLOCKED_METADATA_KEY) is True
+def _scim_markers_on_key(metadata: Any) -> frozenset[str]:
+    if not isinstance(metadata, dict):
+        return frozenset()
+    return frozenset(marker for marker in _SCIM_KEY_BLOCK_MARKERS if metadata.get(marker) is True)
 
 
-async def _set_user_keys_blocked(user_id: str, blocked: bool) -> int:
-    """
-    Block or unblock virtual keys owned by a user and invalidate them in the
-    in-memory/redis caches so the change takes effect immediately.
-
-    Each key SCIM blocks is tagged with ``metadata.scim_blocked = True``. On
-    reactivation we only unblock keys carrying that marker, so a key an admin
-    blocked manually for unrelated reasons is left alone.
-
-    Returns the number of keys whose state was flipped.
-    """
+async def _set_scim_key_marker(where: Dict[str, str], marker: str, present: bool) -> int:
     from litellm.proxy.proxy_server import proxy_logging_obj, user_api_key_cache
 
     prisma_client = await _get_prisma_client_or_raise_exception()
+    candidates = await VerificationTokenRepository(prisma_client).table.find_many(where=where)
 
-    if blocked:
-        # `blocked` is a nullable column with no default, so existing rows
-        # typically hold NULL; treat NULL as "not blocked" since SQL equality
-        # on NULL would otherwise silently skip them.
-        candidates = await VerificationTokenRepository(prisma_client).table.find_many(
-            where={
-                "user_id": user_id,
-                "OR": [{"blocked": False}, {"blocked": None}],
-            },
-        )
-        affected_keys = candidates
-    else:
-        candidates = await VerificationTokenRepository(prisma_client).table.find_many(
-            where={"user_id": user_id, "blocked": True},
-        )
-        affected_keys = [k for k in candidates if _key_was_scim_blocked(k.metadata)]
+    def _live_markers(key_row: Any) -> frozenset[str]:
+        return _scim_markers_on_key(key_row.metadata) if key_row.blocked is True else frozenset()
 
+    def _is_affected(key_row: Any) -> bool:
+        markers = _live_markers(key_row)
+        if not present:
+            return marker in markers
+        manually_blocked = key_row.blocked is True and not markers
+        return marker not in markers and not manually_blocked
+
+    affected_keys = [k for k in candidates if _is_affected(k)]
     if not affected_keys:
         return 0
 
     for key_row in affected_keys:
         current_metadata: Dict[str, Any] = dict(key_row.metadata) if isinstance(key_row.metadata, dict) else {}
-        if blocked:
-            new_metadata = {**current_metadata, SCIM_BLOCKED_METADATA_KEY: True}
-        else:
-            new_metadata = {k: v for k, v in current_metadata.items() if k != SCIM_BLOCKED_METADATA_KEY}
+        new_markers = _live_markers(key_row) | {marker} if present else _live_markers(key_row) - {marker}
+        new_metadata = {
+            **{k: v for k, v in current_metadata.items() if k not in _SCIM_KEY_BLOCK_MARKERS},
+            **dict.fromkeys(new_markers, True),
+        }
         await VerificationTokenRepository(prisma_client).table.update(
             where={"token": key_row.token},
-            data={"blocked": blocked, "metadata": safe_dumps(new_metadata)},
+            data={"blocked": bool(new_markers), "metadata": safe_dumps(new_metadata)},
         )
 
     for key_row in affected_keys:
@@ -518,12 +491,21 @@ async def _set_user_keys_blocked(user_id: str, blocked: bool) -> int:
         )
 
     verbose_proxy_logger.info(
-        "SCIM: %s %d virtual key(s) for user_id=%s",
-        "blocked" if blocked else "unblocked",
+        "SCIM: %s %s on %d virtual key(s) matching %s",
+        "set" if present else "cleared",
+        marker,
         len(affected_keys),
-        user_id,
+        where,
     )
     return len(affected_keys)
+
+
+async def _set_user_keys_blocked(user_id: str, blocked: bool) -> int:
+    return await _set_scim_key_marker({"user_id": user_id}, SCIM_BLOCKED_METADATA_KEY, blocked)
+
+
+async def _set_user_team_keys_blocked(user_id: str, team_id: str, blocked: bool) -> int:
+    return await _set_scim_key_marker({"user_id": user_id, "team_id": team_id}, SCIM_TEAM_REMOVED_METADATA_KEY, blocked)
 
 
 async def _delete_rows_referencing_user(prisma_client: Any, *, user_id: str) -> None:
@@ -1226,17 +1208,10 @@ async def update_user(
             roles=user_data["roles"],
         )
 
-        await _handle_team_membership_changes(
-            user_id=user_id,
-            existing_teams=existing_user.teams or [],
-            new_teams=user_data["teams"],
-        )
-
         update_data = {
             "user_email": user_data["user_email"],
             "user_alias": user_data["user_alias"],
             "sso_user_id": user_data["sso_user_id"],
-            "teams": user_data["teams"],
             "metadata": safe_dumps(metadata),
         }
 
@@ -1370,19 +1345,6 @@ def _handle_name_update(path: str, op_type: str, value: Any, scim_metadata: Dict
             scim_metadata["familyName"] = str(value)
 
 
-def _handle_group_operations(op_type: str, value: Any, teams_set: Set[str]) -> Optional[Set[str]]:
-    """Handle group/team membership operations."""
-    group_values = _extract_group_values(value)
-    if op_type == "replace":
-        return set(group_values)
-    elif op_type == "add":
-        teams_set.update(group_values)
-    elif op_type == "remove":
-        for gid in group_values:
-            teams_set.discard(gid)
-    return None
-
-
 def _multi_valued_attribute_base(path: str) -> str:
     """The attribute name a SCIM path targets, stripped of any value filter or sub-attribute."""
     return path.split("[", 1)[0].split(".", 1)[0]
@@ -1436,14 +1398,11 @@ def _handle_generic_metadata(path: str, op_type: str, value: Any, metadata: Dict
 def _apply_patch_ops(
     existing_user: LiteLLM_UserTable,
     patch_ops: SCIMPatchOp,
-) -> Tuple[Dict[str, Any], Set[str]]:
-    """Apply patch operations and return update data and final team set."""
+) -> Dict[str, Any]:
+    """Apply patch operations and return update data."""
     update_data: Dict[str, Any] = {}
     metadata = existing_user.metadata or {}
     scim_metadata = metadata.get("scim_metadata", {})
-
-    teams_set: Set[str] = set(existing_user.teams or [])
-    replace_team_set: Optional[Set[str]] = None
 
     for op in patch_ops.Operations:
         path = (op.path or "").lower()
@@ -1485,16 +1444,15 @@ def _apply_patch_ops(
         elif _multi_valued_attribute_base(path) in SCIM_MULTI_VALUED_ATTRIBUTE_METADATA_KEYS:
             _handle_multi_valued_attribute_update(path, op_type, value, metadata)
         elif path.startswith("groups"):
-            new_replace_set = _handle_group_operations(op_type, value, teams_set)
-            if new_replace_set is not None:
-                replace_team_set = new_replace_set
+            verbose_proxy_logger.debug(
+                "SCIM: ignoring PATCH on read-only User.groups; membership changes go through /Groups"
+            )
         else:
             _handle_generic_metadata(path, op_type, value, metadata)
 
-    final_team_set = replace_team_set if replace_team_set is not None else teams_set
     metadata["scim_metadata"] = scim_metadata
     update_data["metadata"] = metadata
-    return update_data, final_team_set
+    return update_data
 
 
 async def patch_team_membership(
@@ -1523,14 +1481,19 @@ async def patch_team_membership(
                 verbose_proxy_logger.debug(f"User {user_id} is already in team {_team_id}, skipping add")
             else:
                 verbose_proxy_logger.exception(f"Error adding user to team {_team_id}: {e}")
+                continue
         except Exception as e:
             verbose_proxy_logger.exception(f"Error adding user to team {_team_id}: {e}")
+            continue
+        await _set_user_team_keys_blocked(user_id=user_id, team_id=_team_id, blocked=False)
 
     for _team_id in teams_ids_to_remove_user_from:
         try:
-            await team_member_delete(
+            await _set_user_team_keys_blocked(user_id=user_id, team_id=_team_id, blocked=True)
+            await remove_team_member(
                 data=TeamMemberDeleteRequest(team_id=_team_id, user_id=user_id),
                 user_api_key_dict=UserAPIKeyAuth(user_role=LitellmUserRoles.PROXY_ADMIN),
+                delete_member_keys=False,
             )
         except Exception as e:
             verbose_proxy_logger.exception(f"Error removing user from team {_team_id}: {e}")
@@ -1563,26 +1526,17 @@ async def patch_user(
 
         prev_active = _scim_active_value(existing_user.metadata)
 
-        update_data, final_team_set = _apply_patch_ops(
+        update_data = _apply_patch_ops(
             existing_user=existing_user,
             patch_ops=patch_ops,
         )
 
         new_active = _scim_active_value(update_data.get("metadata"))
 
-        # Handle team membership changes
-        await _handle_team_membership_changes(
-            user_id=user_id,
-            existing_teams=existing_user.teams or [],
-            new_teams=list(final_team_set),
-        )
-
-        update_data["teams"] = list(final_team_set)
-
         admin_group = await _get_scim_admin_group()
         if admin_group is not None:
             update_data["user_role"] = _resolve_scim_user_role(
-                await _scim_groups_from_team_ids(prisma_client, list(final_team_set)),
+                await _scim_groups_from_team_ids(prisma_client, existing_user.teams or []),
                 admin_group,
                 _default_scim_user_role(),
             )
@@ -1657,7 +1611,7 @@ async def get_groups(
             # Get team members with display names
             members = await _get_team_members_display(team.members or [])
             verbose_proxy_logger.debug(f"SCIM GET GROUPS members: {members}")
-            team_alias = getattr(team, "team_alias", team.team_id)
+            team_alias = team.team_alias or team.team_id
             team_created_at = team.created_at.isoformat() if team.created_at else None
             team_updated_at = team.updated_at.isoformat() if team.updated_at else None
 

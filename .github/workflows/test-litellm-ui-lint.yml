@@ -3,6 +3,9 @@ permissions:
   contents: read
 
 on:
+  push:
+    branches:
+      - develop
   pull_request:
     branches:
       - main
@@ -13,7 +16,7 @@ on:
 
 jobs:
   frontend-lint:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 8
     defaults:
       run:
@@ -21,7 +24,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -29,7 +32,7 @@ jobs:
       - name: Collect changed files
         id: changed
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           : > "$RUNNER_TEMP/prettier_files.txt"
           : > "$RUNNER_TEMP/eslint_files.txt"

@@ -1,9 +1,13 @@
 name: OSV Scan
 
 on:
+  push:
+    branches:
+      - develop
   pull_request:
     branches:
       - main
+      - develop
       - litellm_internal_staging
       - litellm_oss_staging
       - "litellm_**"
@@ -20,14 +24,19 @@ concurrency:
 jobs:
   osv-scan:
     name: osv-scan
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
     steps:
-      - uses: useblacksmith/checkout@25227e61ff9dafe400e22fa487b673eac4e4409a # v1.8.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: terraform/provider/go.mod
+          cache: false
 
       - name: Download osv-scanner v2.3.8
         run: |
@@ -41,4 +50,6 @@ jobs:
           "$RUNNER_TEMP/osv-scanner" scan source \
             --config osv-scanner.toml \
             -L uv.lock \
-            -L ui/litellm-dashboard/package-lock.json
+            -L ui/litellm-dashboard/package-lock.json \
+            -L litellm-rust/Cargo.lock \
+            -L terraform/provider/go.mod

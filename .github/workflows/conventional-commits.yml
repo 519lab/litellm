@@ -17,7 +17,9 @@ permissions:
 jobs:
   lint-pr-title:
     name: Validate PR title
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    # The develop -> main promotion PR is opened by the promote workflow with a fixed title.
+    if: ${{ !(github.head_ref == 'develop' && github.base_ref == 'main') }}
+    runs-on: ubuntu-24.04
     steps:
       - name: Check title against Conventional Commits
         uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1

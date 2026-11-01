@@ -332,6 +332,19 @@ class TestScimTransformations:
             assert scim_group.members[1].value == "test2@example.com"
             assert scim_group.members[1].display == "test2@example.com"
 
+    @pytest.mark.asyncio
+    async def test_team_without_alias_uses_team_id_as_display_name(self, mock_user, mock_prisma_client):
+        mock_client, mock_find_unique = mock_prisma_client
+        unnamed_team = LiteLLM_TeamTable(team_id="team-1", team_alias=None, members_with_roles=[])
+        mock_find_unique.return_value = unnamed_team
+
+        with patch("litellm.proxy.proxy_server.prisma_client", mock_client):
+            scim_group = await ScimTransformations.transform_litellm_team_to_scim_group(unnamed_team)
+            scim_user = await ScimTransformations.transform_litellm_user_to_scim_user(mock_user)
+
+        assert scim_group.displayName == "team-1"
+        assert scim_user.groups[0].display == "team-1"
+
     def test_get_scim_user_name(self, mock_user, mock_user_minimal):
         # User with email
         result = ScimTransformations._get_scim_user_name(mock_user)

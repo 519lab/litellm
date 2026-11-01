@@ -1,9 +1,13 @@
 name: "Unit Tests: Proxy API Endpoints"
 
 on:
+  push:
+    branches:
+      - develop
   pull_request:
     branches:
       - main
+      - develop
       - litellm_internal_staging
       - litellm_oss_staging
       - "litellm_**"

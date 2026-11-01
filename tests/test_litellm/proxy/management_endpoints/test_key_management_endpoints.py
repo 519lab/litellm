@@ -10780,6 +10780,76 @@ class TestKeyOwnerPrivilegeEscalation:
         mock_check.assert_called_once()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "budget_fields",
+        [
+            {"temp_budget_increase": 1000000.0, "temp_budget_expiry": "2099-01-01T00:00:00Z"},
+            {"budget_duration": "1s"},
+            {"budget_id": "bigger-budget"},
+            {"model_max_budget": {}},
+        ],
+    )
+    async def test_creator_cannot_raise_own_spend_ceiling_via_other_budget_fields(self, budget_fields):
+        """Every field that lifts a key's effective spend ceiling is a budget change and requires admin."""
+        data = UpdateKeyRequest(key="sk-test", **budget_fields)
+        existing = self._make_existing_key(created_by="creator-123")
+        existing.budget_duration = "30d"
+        existing.budget_id = "small-budget"
+        existing.model_max_budget = {"gpt-4o": {"max_budget": 1.0}}
+        auth = self._make_auth(user_id="creator-123")
+
+        mock_check = AsyncMock(
+            side_effect=HTTPException(status_code=403, detail="Not authorized")
+        )
+        with patch(
+            "litellm.proxy.management_endpoints.key_management_endpoints._check_key_admin_access",
+            mock_check,
+        ):
+            with pytest.raises(HTTPException):
+                await _validate_update_key_data(
+                    data=data,
+                    existing_key_row=existing,
+                    user_api_key_dict=auth,
+                    llm_router=None,
+                    premium_user=True,
+                    prisma_client=AsyncMock(),
+                    user_api_key_cache=MagicMock(),
+                )
+        mock_check.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_creator_resending_unchanged_budget_fields_skips_admin_check(self):
+        """A UI save that echoes the key's current budget settings is not a budget change."""
+        data = UpdateKeyRequest(
+            key="sk-test",
+            key_alias="renamed",
+            budget_duration="30d",
+            budget_id="small-budget",
+            model_max_budget={"gpt-4o": {"max_budget": 1.0}},
+        )
+        existing = self._make_existing_key(created_by="creator-123")
+        existing.budget_duration = "30d"
+        existing.budget_id = "small-budget"
+        existing.model_max_budget = {"gpt-4o": {"max_budget": 1.0}}
+        auth = self._make_auth(user_id="creator-123")
+
+        mock_check = AsyncMock()
+        with patch(
+            "litellm.proxy.management_endpoints.key_management_endpoints._check_key_admin_access",
+            mock_check,
+        ):
+            await _validate_update_key_data(
+                data=data,
+                existing_key_row=existing,
+                user_api_key_dict=auth,
+                llm_router=None,
+                premium_user=True,
+                prisma_client=AsyncMock(),
+                user_api_key_cache=MagicMock(),
+            )
+        mock_check.assert_not_called()
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize("cleared_value", [[], None])
     async def test_creator_cannot_clear_own_budget_limits(self, cleared_value):
         """Clearing budget_limits is a budget change and requires admin."""
