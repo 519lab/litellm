@@ -6,6 +6,8 @@ promoted to `main` and tagged.
 
 ## [Unreleased]
 
+## [v1.94.0-fork.2] - 2026-11-01
+
 ### Changed
 
 - Python 3.10 is no longer supported; `requires-python` is now `>=3.11`. 3.10 reached end of life on 2026-10-01, no CI job tested it, and the patched Pillow and filelock releases no longer install on it, so keeping it meant shipping known-vulnerable versions to 3.10 installs
