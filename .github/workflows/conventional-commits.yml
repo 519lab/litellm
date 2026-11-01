@@ -17,6 +17,8 @@ permissions:
 jobs:
   lint-pr-title:
     name: Validate PR title
+    # The develop -> main promotion PR is opened by the promote workflow with a fixed title.
+    if: ${{ !(github.head_ref == 'develop' && github.base_ref == 'main') }}
     runs-on: ubuntu-24.04
     steps:
       - name: Check title against Conventional Commits
