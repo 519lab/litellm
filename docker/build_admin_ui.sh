@@ -54,8 +54,8 @@ else
 fi || { echo "nvm checksum verification failed"; exit 1; }
 bash "$NVM_SCRIPT"
 source ~/.nvm/nvm.sh
-nvm install v18.17.0
-nvm use v18.17.0
+nvm install v22.23.4
+nvm use v22.23.4
 
 
 # cd in to /ui/litellm-dashboard
