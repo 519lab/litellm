@@ -2,7 +2,7 @@
 
 # UI container — Next.js static export served by nginx.
 
-ARG NODE_VERSION=20.18-alpine3.20
+ARG NODE_VERSION=22.23.4-alpine3.23
 ARG NGINX_VERSION=1.27-alpine
 
 # ---------- builder ----------
