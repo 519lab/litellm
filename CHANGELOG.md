@@ -6,6 +6,13 @@ promoted to `main` and tagged.
 
 ## [Unreleased]
 
+## [v1.94.0-fork.3] - 2026-11-06
+
+### Fixed
+
+- UI builds move to Node 22.23.4 for CVE-2026-111497 (brotli decompression RCE in Node and Chromium). The builder stage in `Dockerfile`, `docker/Dockerfile.database` and `docker/Dockerfile.non_root` and `ui/Dockerfile` ran Node 20.18, and `build_admin_ui.sh` and `build_ui_custom_path.sh` used Node 18.17.0; all now use Node 22.23.4, with the builder image pinned by digest. Playwright moves to 1.64.1 in npm and the Python e2e group (#92)
+- oauthlib moves from 4.0.0 to 4.0.1 (CVE-2026-49272, GHSA-3jp2-3mrg-2vxc). The flaw is in oauthlib's provider-side device-code token endpoint, which this proxy does not run (oauthlib arrives only as a client dependency of fastapi-sso), so this is hygiene rather than an exposure fix (#94)
+
 ## [v1.94.0-fork.2] - 2026-11-01
 
 ### Changed
