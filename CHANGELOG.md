@@ -6,6 +6,9 @@ promoted to `main` and tagged.
 
 ## [Unreleased]
 
+### Changed
+- Dependabot now watches the GitHub Actions workflows weekly, so a new release of the shared `ggrace519/.github` workflows, or of any action, arrives as a pull request against `develop` instead of a hand-edited pin.
+
 ## [v1.94.0-fork.3] - 2026-11-06
 
 ### Fixed
