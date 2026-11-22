@@ -9,6 +9,10 @@ release a version is based on is the `version` in `pyproject.toml`.
 
 ## [Unreleased]
 
+### Fixed
+
+- The full CodeQL Python analysis finishes again. On develop, `py/log-injection` (CWE-117) ran for over 56 minutes without completing and the job was cancelled at its timeout, so it is excluded alongside its sibling `py/clear-text-logging-sensitive-data`; Python now analyses in about five and a half minutes. The suite moves from `security-and-quality` to `security-extended`, which keeps every security query but drops about 3,800 error-level code-quality alerts (3,610 of them `py/unsafe-cyclic-import`) that ruff and basedpyright already cover and that `main`'s ruleset would have treated as merge blockers. The first complete analysis reports 70 Python security alerts, none of which had surfaced before
+
 ## [2.1.0] - 2026-11-22
 
 ### Fixed
