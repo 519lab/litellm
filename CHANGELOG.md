@@ -1,28 +1,35 @@
 # Changelog
 
 Changes to this fork (`519lab/litellm`, formerly `ggrace519/litellm`) on top of upstream LiteLLM. Entries accumulate
-under Unreleased on `develop` and move under a dated version heading when `develop` is
-promoted to `main` and tagged.
+under Unreleased on `develop`. Once CI passes on `develop`, the `version` job of `.github/workflows/promote.yml` opens a
+`chore(release): roll changelog into X.Y.Z` pull request that moves them under the next dated version heading; merging
+it lets the promotion pull request open, and merging that tags `vX.Y.Z` on `main` and publishes a GitHub release with
+the section as its notes. The fork's releases have their own semantic version line starting at 2.0.0; the upstream
+release a version is based on is the `version` in `pyproject.toml`.
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-11-22
+
 ### Changed
 
-- The repo's `pre-push` hook now enforces this fork's branch naming (`litellm_<description>`: lowercase letters, digits, `_` and `-`, no `/`), and `main`, `develop`, `litellm_internal_staging`, `dependabot/*` and `gh-readonly-queue/*` are exempt. It used to require upstream's `feature/`, `bugfix/` style names and rejected every branch the fork's own rules mandate. `make bootstrap` now installs the hooks, so the Conventional Commits `commit-msg` hook runs on every clone instead of only for people who ran `make install-hooks`. CONTRIBUTING.md is updated to match
+- BREAKING: fork releases move from `v1.94.0-fork.N` tags to their own semantic versions, starting with `v2.0.0`, and are cut by the shared `ggrace519/.github` v2.0.0 workflows instead of by hand. After CI passes on `develop`, the `version` job rolls `[Unreleased]` into the next version through a `chore(release): roll changelog into X.Y.Z` pull request into `develop` (an `### Added` entry makes a minor release, a `- BREAKING:` entry a major one, anything else a patch). Once that is merged the promotion pull request opens, and the new `release` workflow checks its changelog as a dry run and, when it merges, tags `vX.Y.Z` on `main` and publishes a GitHub release whose notes are that section. The upstream base stays visible as the `version` in `pyproject.toml` (still `1.94.0`). Changelog headings no longer carry the `v`, because the workflows add the tag prefix themselves
+
+- The repo's `pre-push` hook now enforces this fork's branch naming (`litellm_<description>`: lowercase letters, digits, `_` and `-`, no `/`), and `main`, `develop`, `litellm_internal_staging`, `dependabot/*` and `gh-readonly-queue/*` are exempt. It used to require upstream's `feature/`, `bugfix/` style names and rejected every branch the fork's own rules mandate. `make bootstrap` now installs the hooks, so the Conventional Commits `commit-msg` hook runs on every clone instead of only for people who ran `make install-hooks`. CONTRIBUTING.md is updated to match (#108)
 
 ### Fixed
 
-- Security dependency bumps that turn the OSV and image scans green again. opentelemetry-api, -sdk and -exporter-otlp move to 1.45.2 and instrumentation-fastapi to 0.66b2 (GHSA-mf5v-w3w3-f6cg, quadratic-time `traceparent` parsing that a client can trigger with a crafted header). soupsieve moves from 2.9 to 4.1.2 for four CSS-selector denial-of-service advisories (GHSA-mmhr-3c5m-f64f, GHSA-6655-6qjp-jx7x, GHSA-7g44-g9rc-x53w, GHSA-4j63-6c4x-wfg4); it only arrives through beautifulsoup4 in the test-only `ci` group, which is now limited to Python 3.11.5 and later because soupsieve 4 requires it. The Rust extension's lockfile moves quinn-udp to 0.5.16 (RUSTSEC-2026-0538) and url to 2.5.9 (RUSTSEC-2026-0592), and the Terraform provider builds with Go 1.26.11 (GO-2026-6859). Every image's wolfi base digest moves to one carrying glibc 2.44-r24, which fixes CVE-2026-84243 (High), the finding that has failed the daily image scan since at least 2026-11-18. The root npm manifest moves glob to 14.0.6 and minimatch to 11.0.9 (GHSA-3g3m-2fjr-6pw4, GHSA-g3hv-75wg-m249) and pins test-exclude to 8.0.0, because the glob override had already broken `jest --coverage` at the root, where test-exclude 6 expected glob 7's callback API. The OSV scan now covers that root `package-lock.json`, and `.grype.yaml` gets the same GHSA-3cv6-jpf6-8222 ignore as `osv-scanner.toml` (fix backported in #44)
-- The user-invite dialog's UUID fallback, used when `crypto.randomUUID` is unavailable (for example on a plain-HTTP origin), now draws from `crypto.getRandomValues` instead of `Math.random`
+- Security dependency bumps that turn the OSV and image scans green again. opentelemetry-api, -sdk and -exporter-otlp move to 1.45.2 and instrumentation-fastapi to 0.66b2 (GHSA-mf5v-w3w3-f6cg, quadratic-time `traceparent` parsing that a client can trigger with a crafted header). soupsieve moves from 2.9 to 4.1.2 for four CSS-selector denial-of-service advisories (GHSA-mmhr-3c5m-f64f, GHSA-6655-6qjp-jx7x, GHSA-7g44-g9rc-x53w, GHSA-4j63-6c4x-wfg4); it only arrives through beautifulsoup4 in the test-only `ci` group, which is now limited to Python 3.11.5 and later because soupsieve 4 requires it. The Rust extension's lockfile moves quinn-udp to 0.5.16 (RUSTSEC-2026-0538) and url to 2.5.9 (RUSTSEC-2026-0592), and the Terraform provider builds with Go 1.26.11 (GO-2026-6859). Every image's wolfi base digest moves to one carrying glibc 2.44-r24, which fixes CVE-2026-84243 (High), the finding that has failed the daily image scan since at least 2026-11-18. The root npm manifest moves glob to 14.0.6 and minimatch to 11.0.9 (GHSA-3g3m-2fjr-6pw4, GHSA-g3hv-75wg-m249) and pins test-exclude to 8.0.0, because the glob override had already broken `jest --coverage` at the root, where test-exclude 6 expected glob 7's callback API. The OSV scan now covers that root `package-lock.json`, and `.grype.yaml` gets the same GHSA-3cv6-jpf6-8222 ignore as `osv-scanner.toml` (fix backported in #44) (#104)
+- The user-invite dialog's UUID fallback, used when `crypto.randomUUID` is unavailable (for example on a plain-HTTP origin), now draws from `crypto.getRandomValues` instead of `Math.random` (#104)
 
-## [v1.94.0-fork.3] - 2026-11-06
+## [1.94.0-fork.3] - 2026-11-06
 
 ### Fixed
 
 - UI builds move to Node 22.23.4 for CVE-2026-111497 (brotli decompression RCE in Node and Chromium). The builder stage in `Dockerfile`, `docker/Dockerfile.database` and `docker/Dockerfile.non_root` and `ui/Dockerfile` ran Node 20.18, and `build_admin_ui.sh` and `build_ui_custom_path.sh` used Node 18.17.0; all now use Node 22.23.4, with the builder image pinned by digest. Playwright moves to 1.64.1 in npm and the Python e2e group (#92)
 - oauthlib moves from 4.0.0 to 4.0.1 (CVE-2026-49272, GHSA-3jp2-3mrg-2vxc). The flaw is in oauthlib's provider-side device-code token endpoint, which this proxy does not run (oauthlib arrives only as a client dependency of fastapi-sso), so this is hygiene rather than an exposure fix (#94)
 
-## [v1.94.0-fork.2] - 2026-11-01
+## [1.94.0-fork.2] - 2026-11-01
 
 ### Changed
 
@@ -50,7 +57,7 @@ promoted to `main` and tagged.
 - Security dependency bumps clearing every open Dependabot alert and leaving osv-scan clean. certifi 2026.10.19 drops the emSign root CAs whose intermediates were compromised (GHSA-6q48-6c7w-9gw2, critical), in both the proxy lock and the hash-pinned triage workflow requirements. brotli 1.2.1 fixes an out-of-bounds write in the decoder (GHSA-9v8h-qqgm-4m35, critical). The Docker images' Chainguard `wolfi-base` digest moves to one shipping libbrotli 1.2.1-r1, because the base image pins its packages in `/etc/apk/world`, so the `apk upgrade` step never replaced the vulnerable 1.2.0-r6 system copy (CVE-2026-111497, critical). pypdf 6.21.2 fixes a set of parsing DoS issues. filelock 4.2.4, graphql-core 3.2.13 and GitPython 3.2.1 (GHSA-83vg-56qc-22m7, submodule RCE) come in through tokenizers and the mlflow extra. The `ci` group's Pillow pin moves to 13.0.0, which fixes 41 image-decoder advisories. The dashboard moves to Next.js 16.4.1 (GHSA-2464-fhr4-w9xw, GHSA-673q-mjm6-r5xr, GHSA-p3m5-59mp-jv5r); those affect the Next server runtime, which the committed static export never runs, so this is hygiene rather than an exposure fix. zod is overridden to 4.6.6 in the dashboard (GHSA-mrhx-c7xc-m3w5, dev-only)
 - OpenTelemetry moves from 1.28.0 to 1.45.1 (instrumentation-fastapi 0.66b1), fixing unbounded tracestate parsing in opentelemetry-api (GHSA-xcq7-p3pf-p88h). Three integrations broke on the new SDK and are fixed: the OTel v2 `gen_ai.client.operation.exception` event moved off the removed `opentelemetry._events` API onto the Logs API, with the event name now carried in the log record's `event_name` field instead of an `event.name` attribute, as the current semconv specifies; the AgentOps exporter now owns the requests session it attaches the minted JWT to instead of reaching into an exporter internal that no longer exists, so AgentOps exports stay authenticated; and the deprecated Traceloop logger imports `SpanAttributes` from `opentelemetry.semconv_ai`, without which every Traceloop log call raised `ModuleNotFoundError`. The `ci` group's logfire (5.2.0) and traceloop-sdk (0.62.4) move with it
 
-## [v1.94.0-fork.1] - 2026-10-19
+## [1.94.0-fork.1] - 2026-10-19
 
 ### Added
 
