@@ -9,15 +9,15 @@ release a version is based on is the `version` in `pyproject.toml`.
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-22
+
 ### Fixed
-
 - `make lint` and `make pre-commit` work in a plain clone of the fork. They used to start with `git fetch origin litellm_internal_staging`, a branch that only exists upstream, so every run failed at the fetch unless the base ref was faked by hand, and the budget gates defaulted to that same base. The base is now the fork's `develop` (`origin/develop`, or `LINT_BASE_REMOTE=fork` in a clone where the fork's remote has that name), and CLAUDE.md drops the manual `update-ref` and `branch -f` workarounds
-### Added
 
+### Added
 - `scripts/install.sh` now installs this fork instead of upstream. It used to `uv tool install` upstream's PyPI `litellm[proxy]` (or a BerriAI git ref), bootstrapped uv with `curl | sh` and ended in a setup wizard, so it could not install or deploy 519lab/litellm at all. It now checks out a fork release (the latest `vX.Y.Z` by default, or `--ref`) and syncs a venv exactly to that release's `uv.lock` with the extras the production image installs, on a uv-managed Python 3.12 (the version CI tests), with litellm, `litellm-enterprise` and `litellm-proxy-extras` installed editable from the checkout so their migrations match the code. uv is a pinned 0.11.7 download checked against its published SHA-256. The checkout is fetched by the fork's URL rather than a remote name, so a stale remote cannot silently leave old code in place, and it refuses checkouts with local changes or diverged branches. Re-running with a newer `--ref` upgrades in place, and `--dry-run` lists the package changes without touching anything. `scripts/install-cli.sh` runs it for the thin `cli` extra, and `scripts/create_litellm_branch.sh` / `.ps1` now produce names the `pre-push` hook accepts (`Feature/Foo.Bar` becomes `litellm_foo_bar`)
 
 ### Docs
-
 - The fork's community files no longer send people to upstream. The issue chooser offered a demo call with upstream's founders and their Discord, the PR template asked for Linear tickets, CONTRIBUTING.md required upstream's CLA and said to fork BerriAI/litellm, and CODEOWNERS named BerriAI staff. Those files and the placeholder FUNDING.yml are removed, so the 519lab organization defaults apply (issue forms, PR template, Contributor Covenant 3.0 with reports to conduct@519lab.com, support page). CONTRIBUTING.md keeps its development guide without the CLA, and SECURITY.md replaces upstream's security.md, which the repository's security page was showing: it pointed reporters at BerriAI's GitHub advisories (which upstream now closes) and advertised upstream's bug bounty. The new policy sends reports about the fork here and reports about upstream code to BerriAI's disclosure form (#113)
 
 ## [2.0.0] - 2026-11-22
