@@ -4,6 +4,8 @@ on:
   issues:
     types: [opened, edited]
 
+permissions: {}
+
 jobs:
   check-duplicate:
     runs-on: ubuntu-24.04

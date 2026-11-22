@@ -1,4 +1,9 @@
 ignore:
+  - vulnerability: GHSA-3cv6-jpf6-8222
+    package:
+      name: litellm
+      type: python
+    reason: Reported against this package's own version; the fix is backported on the fork (#44), so the 1.94.3 bump it asks for does not apply
   - vulnerability: GHSA-7hp6-4w63-5g45
     package:
       name: litellm

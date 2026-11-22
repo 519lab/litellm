@@ -5,6 +5,12 @@ updates:
     schedule:
       interval: "daily"
     cooldown:
+      # The shared ggrace519/.github workflows are our own releases: take them
+      # as soon as they are out instead of after the cooldown below.
+      exclude:
+        - ggrace519/.github/.github/workflows/promote.yml
+        - ggrace519/.github/.github/workflows/release.yml
+        - ggrace519/.github/.github/workflows/version.yml
       default-days: 7
       semver-major-days: 14
     groups:

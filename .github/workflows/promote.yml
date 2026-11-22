@@ -114,7 +114,10 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-    uses: ggrace519/.github/.github/workflows/promote.yml@56da419a93d4eca7fe1771297dc734fbd9c39fb4 # v1.0.2
+    uses: ggrace519/.github/.github/workflows/promote.yml@8217a8363cd8f8222471a39df2a0892e0fec2c00 # v2.0.0
     with:
+      app-client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
       ref: ${{ needs.gate.outputs.sha }}
       merge-note: "Merging deploys nothing by itself; the deployment picks up main through its own deploy step. Roll the CHANGELOG `[Unreleased]` entries into a dated version heading before merging, then tag the release on main"
+    secrets:
+      app-private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}

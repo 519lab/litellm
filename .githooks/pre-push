@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 #
-# pre-push — enforce Conventional Branches
-#   https://conventional-branch.github.io/
+# pre-push — enforce this fork's branch naming
 #
-# Branch format:  <type>/<description>
-#   <type> must be one of: feature, bugfix, hotfix, release, chore
+# Branch format:  litellm_<description>
+#   <description> is lowercase letters, digits, '_' and '-', with no '/'
 #
 # Protected branches (always allowed):
 #   - main
+#   - develop
 #   - litellm_internal_staging
 #   - dependabot/*
 #   - gh-readonly-queue/*
@@ -19,10 +19,9 @@ set -eu
 
 ZERO_OID="0000000000000000000000000000000000000000"
 ZERO_OID_SHA256="0000000000000000000000000000000000000000000000000000000000000000"
-ALLOWED_TYPES="feature|bugfix|hotfix|release|chore"
-BRANCH_PATTERN="^(${ALLOWED_TYPES})/.+"
+BRANCH_PATTERN="^litellm_[a-z0-9][a-z0-9_-]*$"
 
-PROTECTED_NAMES="main litellm_internal_staging"
+PROTECTED_NAMES="main develop litellm_internal_staging"
 PROTECTED_PREFIXES="dependabot/ gh-readonly-queue/"
 
 is_protected() {
@@ -65,23 +64,20 @@ done
 
 if [ -n "$invalid" ]; then
     cat >&2 <<EOF
-✗ Branch name does not follow Conventional Branches.
+✗ Branch name does not follow the litellm_ branch convention.
 
   Invalid:$invalid
 
-  Expected: <type>/<description>
+  Expected: litellm_<description>
+            (lowercase letters, digits, '_' and '-'; no '/')
 
-  Allowed types: feature, bugfix, hotfix, release, chore
   Examples:
-    feature/weighted-round-robin
-    bugfix/streaming-empty-chunks
-    chore/bump-deps
-    hotfix/auth-bypass
+    litellm_weighted_round_robin
+    litellm_streaming_empty_chunks
+    litellm_security_bumps_2026_11
 
-  Protected (always allowed): main, litellm_internal_staging,
+  Protected (always allowed): main, develop, litellm_internal_staging,
   dependabot/*, gh-readonly-queue/*.
-
-See https://conventional-branch.github.io/
 
 Rename with: git branch -m <new-name>
 To bypass (use sparingly): git push --no-verify

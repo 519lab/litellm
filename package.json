@@ -11,11 +11,12 @@
     "jest": "29.7.0"
   },
   "overrides": {
-    "glob": "13.0.0",
-    "minimatch": "10.2.5",
+    "glob": "14.0.6",
+    "minimatch": "11.0.9",
     "picomatch": "2.3.2",
     "@isaacs/brace-expansion": "5.0.0",
     "@babel/traverse": "7.28.5",
-    "braces": "3.0.3"
+    "braces": "3.0.3",
+    "test-exclude": "8.0.0"
   }
 }
