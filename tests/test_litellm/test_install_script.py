@@ -320,3 +320,25 @@ def test_create_branch_names_match_the_pre_push_rule(
 
     assert result.returncode == 0, result.stderr
     assert _git(env, work, "branch", "--show-current") == expected
+
+
+def test_rollback_from_a_detached_checkout_moves_to_the_older_release(
+    fork: tuple[Path, Path, dict[str, str]], tmp_path: Path
+) -> None:
+    work, bare, env = fork
+    previous = _commit(env, work, "previous")
+    _git(env, work, "tag", "v2.0.0")
+    _commit(env, work, "bad")
+    _git(env, work, "tag", "v2.0.1")
+    _publish(env, work, bare)
+    checkout = tmp_path / "live"
+    _git(env, tmp_path, "clone", "-q", "-b", "main", str(bare), str(checkout))
+    _git(env, checkout, "checkout", "-q", "--detach", "v2.0.1")
+
+    result = _source(
+        {**env, "LITELLM_FORK_URL": str(bare)},
+        f'DIR="{checkout}"; prepare_checkout v2.0.0 && move_checkout',
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert _git(env, checkout, "rev-parse", "HEAD") == previous
