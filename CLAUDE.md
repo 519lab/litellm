@@ -91,7 +91,7 @@ Follow these coding conventions for new/updated code (a three-line fix in a lega
 - Standard over hand-rolled: use the official SDK or a library where one exists; where none does, follow industry standards instead of inventing local conventions
 - API-fragmentation-aware: when logic must branch on which API surface produced or consumes data (e.g. chat completions vs Anthropic Messages vs Responses API shapes), proactively look for an existing shared helper (e.g. `litellm_core_utils/prompt_templates/factory.py`) before writing per-surface parsing in the new module; if none exists, add one there instead of duplicating the same format-detection logic in every new guardrail/integration
 
-Follow conventional commits for commit names and PR titles
+Every commit message and PR title must follow Conventional Commits 1.0.0 (https://www.conventionalcommits.org/en/v1.0.0/#specification). The subject is `<type>(<scope>)!: <description>`: a type, an optional scope naming the section of the codebase in parentheses, an optional `!` for a breaking change, then a colon, a space and a short description. Use `feat` for a new feature and `fix` for a bug fix; the other allowed types are `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore` and `revert`, the same list `.github/workflows/conventional-commits.yml` and `.githooks/commit-msg` accept. Start the description with a lowercase letter and leave off the trailing period. An optional body starts one blank line after the subject, and optional footers start one blank line after the body, in git-trailer form (`Token: value` or `Token #value`, with `-` in place of spaces in the token, e.g. `Refs: #123`). Mark a breaking change with `!` before the colon, a `BREAKING CHANGE: <description>` footer (uppercase), or both. CI checks only the PR title, and because PRs here are merged with a merge commit, every individual commit lands on `develop` as written, so get each commit message right rather than relying on the title check
 
 ## Think Before Coding
 
@@ -120,7 +120,7 @@ Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, sim
 Python tooling is `uv` (`make` targets wrap `uv run`). `make help` lists everything; the ones that matter day to day:
 
 ```bash
-make bootstrap                 # fresh clone/worktree: deps, prisma client, hooks
+make bootstrap                 # fresh clone/worktree: deps, prisma client, dashboard npm ci, .env copy (does not install git hooks)
 make test-unit                 # tests/test_litellm, mocked only, -n 4; CI only, never run it locally (see above)
 uv run pytest tests/test_litellm/llms/anthropic/chat/test_anthropic_chat_transformation.py -v   # one file
 uv run pytest tests/test_litellm/test_utils.py -k "name_substring" -vv                           # one test
