@@ -2,18 +2,19 @@
 
 Thank you for your interest in contributing to LiteLLM! We welcome contributions of all kinds - from bug fixes and documentation improvements to new features and integrations.
 
+> **This is 519lab's fork of LiteLLM.** Pull requests target `develop`, and the changelog, commit and pull request conventions follow the [519lab contributing guide](https://github.com/519lab/.github/blob/develop/CONTRIBUTING.md) plus the fork rules in `CLAUDE.md`. Everyone taking part follows the [519lab Code of Conduct](https://github.com/519lab/.github/blob/develop/CODE_OF_CONDUCT.md). This guide covers developing LiteLLM itself; contributions to upstream LiteLLM go to BerriAI/litellm under their own process
+
 ## **Checklist before submitting a PR**
 
 Here are the core requirements for any PR submitted to LiteLLM:
 
-- [ ] **Sign the Contributor License Agreement (CLA)** - [see details](#contributor-license-agreement-cla)
 - [ ] **Keep scope isolated** - Your changes should address 1 specific problem at a time
 
 #### Proxy (Backend) PRs
 
 - [ ] **Add testing** - Adding at least 1 test is a hard requirement - [see details](#adding-testing)
 - [ ] **Ensure your PR passes all checks**:
-  - [ ] [Unit Tests](#running-unit-tests) - `make test-unit`
+  - [ ] [Unit Tests](#running-unit-tests) - the test files mapped to what you changed; CI runs the full suite, which can exhaust RAM locally
   - [ ] [Linting / Formatting](#running-linting-and-formatting-checks) - `make lint`
 
 #### UI PRs
@@ -22,20 +23,13 @@ Here are the core requirements for any PR submitted to LiteLLM:
 - [ ] **Ensure all UI unit tests pass** - `npm run test`
 - [ ] **Add tests for new components or logic** - If you are adding a new component or new logic, add corresponding tests
 
-## **Contributor License Agreement (CLA)**
-
-Before contributing code to LiteLLM, you must sign our [Contributor License Agreement (CLA)](https://cla-assistant.io/BerriAI/litellm). This is a legal requirement for all contributions to be merged into the main repository.
-
-**Important:** We strongly recommend reviewing and signing the CLA before starting work on your contribution to avoid any delays in the PR process.
-
 ## Quick Start
 
 ### 1. Setup Your Local Development Environment
 
 ```bash
-# Fork the repository on GitHub (click the Fork button at https://github.com/BerriAI/litellm)
-# Then clone your fork locally
-git clone https://github.com/YOUR_USERNAME/litellm.git
+# Clone the fork
+git clone https://github.com/519lab/litellm.git
 cd litellm
 
 # Create a new branch for your feature (see "Commit and Branch Conventions" below)
