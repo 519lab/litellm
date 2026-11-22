@@ -39,7 +39,7 @@ git clone https://github.com/YOUR_USERNAME/litellm.git
 cd litellm
 
 # Create a new branch for your feature (see "Commit and Branch Conventions" below)
-git checkout -b feature/your-feature
+git checkout -b litellm_your_feature
 
 # Install development dependencies
 make install-dev
@@ -55,7 +55,7 @@ That's it! Your local development environment is ready.
 
 ## Commit and Branch Conventions
 
-Commits follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) and branches follow [Conventional Branches](https://conventional-branch.github.io/). Run `make install-hooks` once per clone to enable the local git hooks that enforce these — see the [contributor docs](https://docs.litellm.ai/docs/extras/contributing_code#commit-and-branch-conventions) for the full type list, examples, the protected-branch bypass list, and how to opt out.
+Commits follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/), and branches on this fork are named `litellm_<description>` (lowercase letters, digits, `_` and `-`, no `/`). `make bootstrap` installs the local git hooks that enforce both (`make install-hooks` does just that step); `main`, `develop`, `litellm_internal_staging`, `dependabot/*` and `gh-readonly-queue/*` are exempt from the branch check, and `--no-verify` bypasses either hook.
 
 ### 2. Development Workflow
 
@@ -71,15 +71,15 @@ make format
 # Run all linting checks (matches CI exactly)
 make lint
 
-# Run unit tests to ensure nothing is broken
-make test-unit
+# Run the tests mapped to what you changed; the full suite runs in CI and can exhaust RAM locally
+uv run pytest tests/test_litellm/path/to/test_file.py -v
 
 # Commit your changes (must follow Conventional Commits — see above)
 git add .
 git commit -m "feat(scope): your descriptive commit message"
 
-# Push and create a PR (branch must follow Conventional Branches — see above)
-git push origin feature/your-feature
+# Push and create a PR (branch must be named litellm_<description>; see above)
+git push origin litellm_your_feature
 ```
 
 ## Adding Testing

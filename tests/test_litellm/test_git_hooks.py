@@ -1,7 +1,7 @@
 """Tests for the repo's git hook scripts in ``.githooks/``.
 
 The hooks enforce Conventional Commits 1.0.0 on the commit-msg path and
-Conventional Branches on the pre-push path. Each hook is exercised here as a
+the fork's ``litellm_<description>`` branch naming on the pre-push path. Each hook is exercised here as a
 subprocess against representative valid / invalid inputs so that any future
 regex change or accidental edit gets caught by ``make test-unit``.
 
@@ -206,15 +206,13 @@ def test_commit_msg_uses_first_non_comment_line(tmp_path):
 @pytest.mark.parametrize(
     "branch",
     [
-        "feature/weighted-round-robin",
-        "bugfix/streaming-empty-chunks",
-        "hotfix/auth-bypass",
-        "release/v1.45.0",
-        "chore/bump-deps",
-        "feature/nested/path/ok",  # nested slashes after type are fine
+        "litellm_weighted_round_robin",
+        "litellm_security_bumps_2026_11",
+        "litellm_fix-streaming-chunks",
+        "litellm_2026_release",
     ],
 )
-def test_pre_push_accepts_conventional_branches(branch):
+def test_pre_push_accepts_fork_branches(branch):
     result = _run_pre_push(_ref_line(branch))
     assert result.returncode == 0, (
         f"hook rejected a valid branch:\n  branch: {branch!r}\n"
@@ -226,26 +224,30 @@ def test_pre_push_accepts_conventional_branches(branch):
     "branch",
     [
         "random-branch-name",
-        "litellm_fix/optimize-streaming",  # legacy pattern is now rejected
-        "ui/navbar-notifications",         # not in the allow list
-        "feature/",                        # empty description
-        "Feature/foo",                     # type is case-sensitive
-        "feat/foo",                        # angular commit type, not branch type
+        "feature/weighted-round-robin",
+        "claude/fix-streaming",
+        "litellm_fix/optimize-streaming",
+        "litellm_",
+        "litellm__double_underscore_start",
+        "litellm_Upper_Case",
+        "LITELLM_shouting",
+        "xlitellm_prefixed",
     ],
 )
-def test_pre_push_rejects_non_conventional_branches(branch):
+def test_pre_push_rejects_non_fork_branches(branch):
     result = _run_pre_push(_ref_line(branch))
     assert result.returncode == 1, (
         f"hook accepted an invalid branch:\n  branch: {branch!r}\n"
         f"  stderr: {result.stderr}"
     )
-    assert "Conventional Branches" in result.stderr
+    assert "litellm_ branch convention" in result.stderr
 
 
 @pytest.mark.parametrize(
     "branch",
     [
         "main",
+        "develop",
         "litellm_internal_staging",
         "dependabot/github_actions/foo",
         "gh-readonly-queue/main/abc123",
@@ -274,10 +276,11 @@ def test_pre_push_skips_branch_deletions():
 
 def test_pre_push_fails_if_any_ref_is_invalid():
     # Mixed batch: one valid, one invalid — entire push should fail.
-    stdin = _ref_line("feature/ok") + _ref_line("random-bad")
+    stdin = _ref_line("litellm_ok") + _ref_line("random-bad")
     result = _run_pre_push(stdin)
     assert result.returncode == 1
     assert "random-bad" in result.stderr
+    assert "litellm_ok" not in result.stderr
 
 
 def test_pre_push_no_refs_passes():
