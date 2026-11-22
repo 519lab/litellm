@@ -43,7 +43,7 @@ Don't hesitate to use values in .env to get needed API keys and other secrets, a
 
 Python max line length is 120, not 88
 
-On a fresh worktree or clone, run `make bootstrap` before anything else. It provisions everything tests, `make pre-commit`, and a local proxy need
+On a fresh worktree or clone, run `make bootstrap` before anything else. It provisions everything tests, `make pre-commit`, and a local proxy need. Installing or upgrading a deployment is different: `scripts/install.sh --ref vX.Y.Z --dir <checkout> --venv <venv>` checks out the release and syncs the venv exactly to its `uv.lock` (see `--help`); never hand-assemble a deployment venv with pip
 
 Never run the full test suite locally (`make test-unit`, `pytest tests/test_litellm`, or any whole-directory run): it starts several xdist workers that each import all of litellm, and on a typical dev machine it exhausts RAM and gets OOM-killed. Run only the test files mapped to what you changed, and leave the full suite to CI's sharded jobs
 
