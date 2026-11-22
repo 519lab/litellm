@@ -52,4 +52,5 @@ jobs:
             -L uv.lock \
             -L ui/litellm-dashboard/package-lock.json \
             -L litellm-rust/Cargo.lock \
-            -L terraform/provider/go.mod
+            -L terraform/provider/go.mod \
+            -L package-lock.json
