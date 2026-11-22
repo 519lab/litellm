@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { CreateUserButton } from "./CreateUserButton";
+import { CreateUserButton, generateUUID } from "./CreateUserButton";
 import * as networking from "./networking";
 import NotificationsManager from "./molecules/notifications_manager";
 
@@ -520,5 +520,21 @@ describe("CreateUserButton", () => {
       const dialog = screen.getByRole("dialog", { name: /invite user/i });
       expect(within(dialog).getByRole("checkbox", { name: /send invitation email/i })).toBeChecked();
     });
+  });
+});
+
+describe("generateUUID", () => {
+  it("builds an RFC 4122 v4 id from crypto.getRandomValues when crypto.randomUUID is unavailable", () => {
+    const mathRandomSpy = vi.spyOn(Math, "random");
+    vi.stubGlobal("crypto", {
+      getRandomValues: (array: Uint8Array) => array.fill(0xff),
+    });
+    try {
+      expect(generateUUID()).toBe("ffffffff-ffff-4fff-bfff-ffffffffffff");
+      expect(mathRandomSpy).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+      mathRandomSpy.mockRestore();
+    }
   });
 });
