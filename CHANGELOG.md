@@ -9,6 +9,10 @@ release a version is based on is the `version` in `pyproject.toml`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Python code is scanned by CodeQL again. GitHub's default CodeQL setup had dropped Python after its 2026-11-18 setup run, where the `py/polynomial-redos` query passed CodeQL's 2 GiB result-set limit while tracing regexes through the whole tree, `tests/` included, so the repo's main language had no code scanning while every check stayed green. Scanning moves to the repo's own `.github/workflows/codeql.yml`, whose config already excludes that query and `py/clear-text-logging-sensitive-data` (the two known out-of-memory queries) and skips `tests` and `docs`. The workflow now scans pushes to `develop` (the default branch, where alerts live) as well as `main`, runs its daily schedule on this fork instead of only upstream, and covers Rust and Go as well as Actions, JavaScript/TypeScript and Python, so nothing default setup scanned is lost apart from two Ruby files
+
 ## [2.1.0] - 2026-11-22
 
 ### Fixed
