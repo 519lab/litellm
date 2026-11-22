@@ -76,6 +76,7 @@ bootstrap:
 	$(UV) sync --inexact --frozen --extra proxy --group proxy-dev --group e2e-dev
 	$(UV_RUN) python scripts/prisma_generate_if_needed.py
 	cd ui/litellm-dashboard && npm ci --no-audit --no-fund
+	./scripts/install_git_hooks.sh
 	@main_root=$$(git worktree list --porcelain | head -1 | sed 's/^worktree //'); \
 	if [ "$$main_root" != "$$(git rev-parse --show-toplevel)" ] && [ -f "$$main_root/.env" ] && [ ! -f .env ]; then \
 		cp "$$main_root/.env" .env && echo "bootstrap: copied .env from $$main_root"; \
@@ -101,8 +102,8 @@ install-test-deps: install-proxy-dev
 install-helm-unittest:
 	helm plugin install https://github.com/helm-unittest/helm-unittest --version v0.4.4 || echo "ignore error if plugin exists"
 
-# Install git hooks that enforce Conventional Commits and Conventional Branches.
-# Opt-in: not chained into install-dev.
+# Install git hooks that enforce Conventional Commits and litellm_<description> branch names.
+# make bootstrap runs this too.
 install-hooks:
 	./scripts/install_git_hooks.sh
 

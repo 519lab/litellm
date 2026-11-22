@@ -6,6 +6,10 @@ promoted to `main` and tagged.
 
 ## [Unreleased]
 
+### Changed
+
+- The repo's `pre-push` hook now enforces this fork's branch naming (`litellm_<description>`: lowercase letters, digits, `_` and `-`, no `/`), and `main`, `develop`, `litellm_internal_staging`, `dependabot/*` and `gh-readonly-queue/*` are exempt. It used to require upstream's `feature/`, `bugfix/` style names and rejected every branch the fork's own rules mandate. `make bootstrap` now installs the hooks, so the Conventional Commits `commit-msg` hook runs on every clone instead of only for people who ran `make install-hooks`. CONTRIBUTING.md is updated to match
+
 ### Fixed
 
 - Security dependency bumps that turn the OSV and image scans green again. opentelemetry-api, -sdk and -exporter-otlp move to 1.45.2 and instrumentation-fastapi to 0.66b2 (GHSA-mf5v-w3w3-f6cg, quadratic-time `traceparent` parsing that a client can trigger with a crafted header). soupsieve moves from 2.9 to 4.1.2 for four CSS-selector denial-of-service advisories (GHSA-mmhr-3c5m-f64f, GHSA-6655-6qjp-jx7x, GHSA-7g44-g9rc-x53w, GHSA-4j63-6c4x-wfg4); it only arrives through beautifulsoup4 in the test-only `ci` group, which is now limited to Python 3.11.5 and later because soupsieve 4 requires it. The Rust extension's lockfile moves quinn-udp to 0.5.16 (RUSTSEC-2026-0538) and url to 2.5.9 (RUSTSEC-2026-0592), and the Terraform provider builds with Go 1.26.11 (GO-2026-6859). Every image's wolfi base digest moves to one carrying glibc 2.44-r24, which fixes CVE-2026-84243 (High), the finding that has failed the daily image scan since at least 2026-11-18. The root npm manifest moves glob to 14.0.6 and minimatch to 11.0.9 (GHSA-3g3m-2fjr-6pw4, GHSA-g3hv-75wg-m249) and pins test-exclude to 8.0.0, because the glob override had already broken `jest --coverage` at the root, where test-exclude 6 expected glob 7's callback API. The OSV scan now covers that root `package-lock.json`, and `.grype.yaml` gets the same GHSA-3cv6-jpf6-8222 ignore as `osv-scanner.toml` (fix backported in #44)

@@ -1,7 +1,7 @@
 """Tests for the repo's git hook scripts in ``.githooks/``.
 
 The hooks enforce Conventional Commits 1.0.0 on the commit-msg path and
-Conventional Branches on the pre-push path. Each hook is exercised here as a
+the fork's ``litellm_<description>`` branch naming on the pre-push path. Each hook is exercised here as a
 subprocess against representative valid / invalid inputs so that any future
 regex change or accidental edit gets caught by ``make test-unit``.
 
@@ -9,7 +9,6 @@ The hooks are POSIX-ish bash scripts; the test is skipped on Windows where
 ``bash`` may not be on PATH.
 """
 
-import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -88,22 +87,19 @@ def _ref_line(branch: str, local_oid: str = _NONZERO_OID, remote_oid: str = _ZER
 )
 def test_commit_msg_accepts_conventional_subjects(tmp_path, subject):
     result = _run_commit_msg(subject, tmp_path)
-    assert result.returncode == 0, (
-        f"hook rejected a valid subject:\n  subject: {subject!r}\n"
-        f"  stderr: {result.stderr}"
-    )
+    assert result.returncode == 0, f"hook rejected a valid subject:\n  subject: {subject!r}\n  stderr: {result.stderr}"
 
 
 @pytest.mark.parametrize(
     "subject",
     [
-        "add stuff",                          # no type
-        "feat add router strategy",           # missing colon
-        "feat:add router strategy",           # missing space after colon
-        "feat():",                            # empty description
-        "ux: thing",                          # unknown type
-        "Feat(router): capital type",         # types are lowercase
-        "feat(router):",                      # empty description
+        "add stuff",  # no type
+        "feat add router strategy",  # missing colon
+        "feat:add router strategy",  # missing space after colon
+        "feat():",  # empty description
+        "ux: thing",  # unknown type
+        "Feat(router): capital type",  # types are lowercase
+        "feat(router):",  # empty description
         # Description must start with a lowercase letter — kept in sync with
         # the CI workflow's subjectPattern so the local hook never accepts a
         # subject that CI will later reject.
@@ -116,8 +112,7 @@ def test_commit_msg_accepts_conventional_subjects(tmp_path, subject):
 def test_commit_msg_rejects_invalid_subjects(tmp_path, subject):
     result = _run_commit_msg(subject, tmp_path)
     assert result.returncode == 1, (
-        f"hook accepted an invalid subject:\n  subject: {subject!r}\n"
-        f"  stderr: {result.stderr}"
+        f"hook accepted an invalid subject:\n  subject: {subject!r}\n  stderr: {result.stderr}"
     )
     assert "Conventional Commits" in result.stderr
 
@@ -136,8 +131,7 @@ def test_commit_msg_rejects_invalid_subjects(tmp_path, subject):
 def test_commit_msg_accepts_non_uppercase_starts(tmp_path, subject):
     result = _run_commit_msg(subject, tmp_path)
     assert result.returncode == 0, (
-        f"hook rejected a valid non-uppercase-start subject:\n"
-        f"  subject: {subject!r}\n  stderr: {result.stderr}"
+        f"hook rejected a valid non-uppercase-start subject:\n  subject: {subject!r}\n  stderr: {result.stderr}"
     )
 
 
@@ -154,8 +148,7 @@ def test_commit_msg_accepts_non_uppercase_starts(tmp_path, subject):
 def test_commit_msg_passes_git_generated_messages(tmp_path, subject):
     result = _run_commit_msg(subject, tmp_path)
     assert result.returncode == 0, (
-        f"hook should pass git-generated subject:\n  subject: {subject!r}\n"
-        f"  stderr: {result.stderr}"
+        f"hook should pass git-generated subject:\n  subject: {subject!r}\n  stderr: {result.stderr}"
     )
 
 
@@ -184,11 +177,7 @@ def test_commit_msg_uses_first_non_comment_line(tmp_path):
     # below the subject. Make sure leading comment lines are skipped too.
     msg_file = tmp_path / "COMMIT_EDITMSG"
     msg_file.write_text(
-        "# On branch feature/foo\n"
-        "\n"
-        "feat(router): add weighted round-robin\n"
-        "\n"
-        "# Please enter the commit message...\n",
+        "# On branch feature/foo\n\nfeat(router): add weighted round-robin\n\n# Please enter the commit message...\n",
         encoding="utf-8",
     )
     result = subprocess.run(
@@ -206,46 +195,42 @@ def test_commit_msg_uses_first_non_comment_line(tmp_path):
 @pytest.mark.parametrize(
     "branch",
     [
-        "feature/weighted-round-robin",
-        "bugfix/streaming-empty-chunks",
-        "hotfix/auth-bypass",
-        "release/v1.45.0",
-        "chore/bump-deps",
-        "feature/nested/path/ok",  # nested slashes after type are fine
+        "litellm_weighted_round_robin",
+        "litellm_security_bumps_2026_11",
+        "litellm_fix-streaming-chunks",
+        "litellm_2026_release",
     ],
 )
-def test_pre_push_accepts_conventional_branches(branch):
+def test_pre_push_accepts_fork_branches(branch):
     result = _run_pre_push(_ref_line(branch))
-    assert result.returncode == 0, (
-        f"hook rejected a valid branch:\n  branch: {branch!r}\n"
-        f"  stderr: {result.stderr}"
-    )
+    assert result.returncode == 0, f"hook rejected a valid branch:\n  branch: {branch!r}\n  stderr: {result.stderr}"
 
 
 @pytest.mark.parametrize(
     "branch",
     [
         "random-branch-name",
-        "litellm_fix/optimize-streaming",  # legacy pattern is now rejected
-        "ui/navbar-notifications",         # not in the allow list
-        "feature/",                        # empty description
-        "Feature/foo",                     # type is case-sensitive
-        "feat/foo",                        # angular commit type, not branch type
+        "feature/weighted-round-robin",
+        "claude/fix-streaming",
+        "litellm_fix/optimize-streaming",
+        "litellm_",
+        "litellm__double_underscore_start",
+        "litellm_Upper_Case",
+        "LITELLM_shouting",
+        "xlitellm_prefixed",
     ],
 )
-def test_pre_push_rejects_non_conventional_branches(branch):
+def test_pre_push_rejects_non_fork_branches(branch):
     result = _run_pre_push(_ref_line(branch))
-    assert result.returncode == 1, (
-        f"hook accepted an invalid branch:\n  branch: {branch!r}\n"
-        f"  stderr: {result.stderr}"
-    )
-    assert "Conventional Branches" in result.stderr
+    assert result.returncode == 1, f"hook accepted an invalid branch:\n  branch: {branch!r}\n  stderr: {result.stderr}"
+    assert "litellm_ branch convention" in result.stderr
 
 
 @pytest.mark.parametrize(
     "branch",
     [
         "main",
+        "develop",
         "litellm_internal_staging",
         "dependabot/github_actions/foo",
         "gh-readonly-queue/main/abc123",
@@ -253,10 +238,7 @@ def test_pre_push_rejects_non_conventional_branches(branch):
 )
 def test_pre_push_bypasses_protected_branches(branch):
     result = _run_pre_push(_ref_line(branch))
-    assert result.returncode == 0, (
-        f"protected branch was rejected:\n  branch: {branch!r}\n"
-        f"  stderr: {result.stderr}"
-    )
+    assert result.returncode == 0, f"protected branch was rejected:\n  branch: {branch!r}\n  stderr: {result.stderr}"
 
 
 def test_pre_push_skips_tag_pushes():
@@ -274,10 +256,11 @@ def test_pre_push_skips_branch_deletions():
 
 def test_pre_push_fails_if_any_ref_is_invalid():
     # Mixed batch: one valid, one invalid — entire push should fail.
-    stdin = _ref_line("feature/ok") + _ref_line("random-bad")
+    stdin = _ref_line("litellm_ok") + _ref_line("random-bad")
     result = _run_pre_push(stdin)
     assert result.returncode == 1
     assert "random-bad" in result.stderr
+    assert "litellm_ok" not in result.stderr
 
 
 def test_pre_push_no_refs_passes():

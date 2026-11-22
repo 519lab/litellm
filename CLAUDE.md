@@ -120,7 +120,7 @@ Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, sim
 Python tooling is `uv` (`make` targets wrap `uv run`). `make help` lists everything; the ones that matter day to day:
 
 ```bash
-make bootstrap                 # fresh clone/worktree: deps, prisma client, dashboard npm ci, .env copy (does not install git hooks)
+make bootstrap                 # fresh clone/worktree: deps, prisma client, dashboard npm ci, git hooks, .env copy
 make test-unit                 # tests/test_litellm, mocked only, -n 4; CI only, never run it locally (see above)
 uv run pytest tests/test_litellm/llms/anthropic/chat/test_anthropic_chat_transformation.py -v   # one file
 uv run pytest tests/test_litellm/test_utils.py -k "name_substring" -vv                           # one test
