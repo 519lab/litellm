@@ -39,7 +39,7 @@ if ([string]::IsNullOrEmpty($SourceBranch)) {
 
 # Get new branch name
 if ([string]::IsNullOrEmpty($NewBranchName)) {
-    $NewBranchName = $SourceBranch
+    $NewBranchName = ($SourceBranch -split '/')[-1]
 }
 
 # Remove litellm_ prefix if it already exists
@@ -48,15 +48,14 @@ if ($NewBranchName -like "litellm_*") {
     Write-Warning "Removed existing litellm_ prefix from branch name"
 }
 
-# Add litellm_ prefix
-$NewBranchName = "litellm_$NewBranchName"
-
-# Validate branch name (Git branch naming rules)
-if ($NewBranchName -notmatch '^[a-zA-Z0-9/._-]+$') {
-    Write-Error "Invalid branch name: $NewBranchName"
-    Write-Info "Branch names can only contain alphanumeric characters, /, ., _, and -"
+$NewBranchName = (($NewBranchName.ToLowerInvariant() -replace '[^a-z0-9_-]+', '_') -replace '^[^a-z0-9]+', '')
+if ([string]::IsNullOrEmpty($NewBranchName)) {
+    Write-Error "No usable branch name left after normalizing it to the fork's litellm_<description> rule"
     exit 1
 }
+
+# Add litellm_ prefix
+$NewBranchName = "litellm_$NewBranchName"
 
 # Check if source branch exists
 $sourceExists = $false

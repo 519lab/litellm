@@ -87,6 +87,8 @@ class TestUpCommand:
         assert result.exit_code != 0
         assert "fastapi, websockets" in result.output
         assert "litellm[proxy]" in result.output
+        assert "519lab/litellm" in result.output
+        assert "scripts/install.sh" in result.output
 
     def test_refuses_when_pid_record_exists_and_process_still_running(self, monkeypatch, tmp_path):
         config_path, _log_path, _settings_path, _backup_path, pid_record_path = _patch_paths(monkeypatch, tmp_path)
