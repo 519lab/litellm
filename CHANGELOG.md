@@ -9,6 +9,10 @@ release a version is based on is the `version` in `pyproject.toml`.
 
 ## [Unreleased]
 
+### Fixed
+
+- `make lint` and `make pre-commit` work in a plain clone of the fork. They used to start with `git fetch origin litellm_internal_staging`, a branch that only exists upstream, so every run failed at the fetch unless the base ref was faked by hand, and the budget gates defaulted to that same base. The base is now the fork's `develop` (`origin/develop`, or `LINT_BASE_REMOTE=fork` in a clone where the fork's remote has that name), and CLAUDE.md drops the manual `update-ref` and `branch -f` workarounds
+
 ## [2.0.0] - 2026-11-22
 
 ### Changed
