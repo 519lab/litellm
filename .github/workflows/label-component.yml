@@ -5,6 +5,8 @@ on:
     types:
       - opened
 
+permissions: {}
+
 jobs:
   add-component-label:
     runs-on: ubuntu-24.04
