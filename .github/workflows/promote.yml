@@ -1,9 +1,11 @@
 name: promote
 
-# Opens or refreshes the develop -> main promotion pull request once every CI gate has passed on
-# the current develop tip. CI is split across many workflows, and workflow_run fires once per
-# workflow, so the gate job only lets the run through when all of them have succeeded for that
-# commit. The list below must match REQUIRED_WORKFLOWS in the gate job.
+# Once every CI gate has passed on the current develop tip, rolls the CHANGELOG [Unreleased]
+# entries into the next version through a roll-up pull request into develop (version), and once
+# nothing is left to roll opens or refreshes the develop -> main promotion pull request (promote).
+# CI is split across many workflows, and workflow_run fires once per workflow, so the gate job
+# only lets the run through when all of them have succeeded for that commit. The list below must
+# match REQUIRED_WORKFLOWS in the gate job.
 on:
   workflow_run:  # zizmor: ignore[dangerous-triggers]  only push runs on develop pass the gate, and nothing from the triggering run is checked out
     workflows:
@@ -108,16 +110,29 @@ jobs:
           done <<<"$REQUIRED_WORKFLOWS"
           echo "ready=$ready" >> "$GITHUB_OUTPUT"
 
-  promote:
+  version:
     needs: gate
     if: needs.gate.outputs.ready == 'true'
+    permissions:
+      contents: write
+      pull-requests: write
+    uses: ggrace519/.github/.github/workflows/version.yml@8217a8363cd8f8222471a39df2a0892e0fec2c00 # v2.0.0
+    with:
+      app-client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+      ref: ${{ needs.gate.outputs.sha }}
+    secrets:
+      app-private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+  promote:
+    needs: version
+    if: needs.version.outputs.promote == 'true'
     permissions:
       contents: read
       pull-requests: write
     uses: ggrace519/.github/.github/workflows/promote.yml@8217a8363cd8f8222471a39df2a0892e0fec2c00 # v2.0.0
     with:
       app-client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
-      ref: ${{ needs.gate.outputs.sha }}
-      merge-note: "Merging deploys nothing by itself; the deployment picks up main through its own deploy step. Roll the CHANGELOG `[Unreleased]` entries into a dated version heading on develop before merging; the release check on this pull request fails until they are, and the release workflow tags the version on main after the merge"
+      ref: ${{ needs.version.outputs.sha }}
+      merge-note: "Merging deploys nothing by itself; the deployment picks up main through its own deploy step. The release workflow tags the changelog's top version on main after the merge"
     secrets:
       app-private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}

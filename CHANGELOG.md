@@ -1,17 +1,19 @@
 # Changelog
 
 Changes to this fork (`519lab/litellm`, formerly `ggrace519/litellm`) on top of upstream LiteLLM. Entries accumulate
-under Unreleased on `develop` and are rolled into a dated `## [1.94.0-fork.N] - YYYY-MM-DD` heading on `develop`
-before the promotion to `main`. `.github/workflows/release.yml` then tags `v1.94.0-fork.N` on `main` and publishes a
-GitHub release with that section as its notes.
+under Unreleased on `develop`. Once CI passes on `develop`, the `version` job of `.github/workflows/promote.yml` opens a
+`chore(release): roll changelog into X.Y.Z` pull request that moves them under the next dated version heading; merging
+it lets the promotion pull request open, and merging that tags `vX.Y.Z` on `main` and publishes a GitHub release with
+the section as its notes. The fork's releases have their own semantic version line starting at 2.0.0; the upstream
+release a version is based on is the `version` in `pyproject.toml`.
 
 ## [Unreleased]
 
-## [1.94.0-fork.4] - 2026-11-22
+## [2.0.0] - 2026-11-22
 
 ### Changed
 
-- Releases are cut by the shared `release` workflow (`ggrace519/.github` v2.0.0) instead of by hand. Each push to `main` tags the changelog's top version as `v<version>` and publishes a GitHub release whose notes are that section; on the promotion pull request it runs as a dry run, so a promotion that still has entries under `[Unreleased]`, or whose top version is not newer than the last tag, fails its check before the merge. Changelog headings drop the `v` (`## [1.94.0-fork.4]`), because the workflow reads the version from the heading and adds the prefix itself. Because the versions carry a `-fork.N` suffix, GitHub marks these releases as pre-releases
+- BREAKING: fork releases move from `v1.94.0-fork.N` tags to their own semantic versions, starting with `v2.0.0`, and are cut by the shared `ggrace519/.github` v2.0.0 workflows instead of by hand. After CI passes on `develop`, the `version` job rolls `[Unreleased]` into the next version through a `chore(release): roll changelog into X.Y.Z` pull request into `develop` (an `### Added` entry makes a minor release, a `- BREAKING:` entry a major one, anything else a patch). Once that is merged the promotion pull request opens, and the new `release` workflow checks its changelog as a dry run and, when it merges, tags `vX.Y.Z` on `main` and publishes a GitHub release whose notes are that section. The upstream base stays visible as the `version` in `pyproject.toml` (still `1.94.0`). Changelog headings no longer carry the `v`, because the workflows add the tag prefix themselves
 
 - The repo's `pre-push` hook now enforces this fork's branch naming (`litellm_<description>`: lowercase letters, digits, `_` and `-`, no `/`), and `main`, `develop`, `litellm_internal_staging`, `dependabot/*` and `gh-readonly-queue/*` are exempt. It used to require upstream's `feature/`, `bugfix/` style names and rejected every branch the fork's own rules mandate. `make bootstrap` now installs the hooks, so the Conventional Commits `commit-msg` hook runs on every clone instead of only for people who ran `make install-hooks`. CONTRIBUTING.md is updated to match (#108)
 
