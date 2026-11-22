@@ -10,14 +10,15 @@ on:
         required: false
         type: string
 
-permissions:
-  contents: write
+permissions: {}
 
 jobs:
   create-oss-branch:
     if: github.repository == 'BerriAI/litellm'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repository

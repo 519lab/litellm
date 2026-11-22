@@ -5,17 +5,18 @@ on:
     paths:
       - 'schema.prisma'
 
-# Scoped to ONLY the permissions needed:
-# - contents:write to push the sync commit to the PR branch
-# - pull-requests:read is implicit (needed to check out the PR)
-permissions:
-  contents: write
+permissions: {}
 
 jobs:
   sync:
     name: Copy root schema to proxy and proxy-extras
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    # Scoped to ONLY the permissions needed:
+    # - contents:write to push the sync commit to the PR branch
+    # - pull-requests:read is implicit (needed to check out the PR)
+    permissions:
+      contents: write
     # Only run on PRs from branches in THIS repo (not forks).
     # Fork PRs cannot push back to the head branch with GITHUB_TOKEN,
     # and pull_request events from forks have read-only tokens anyway.
