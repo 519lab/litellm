@@ -86,10 +86,9 @@ def up() -> None:
     if missing:
         raise click.ClickException(
             "lite autoroute up launches a local litellm proxy, which needs the proxy runtime that the "
-            f"thin `litellm[cli]` install does not include (missing: {', '.join(missing)}). Install the "
-            "proxy runtime with `uv tool install --force 'litellm[proxy]'`, or to QA a branch, "
-            "`curl -fsSL https://raw.githubusercontent.com/BerriAI/litellm/<branch>/scripts/install.sh | "
-            "LITELLM_CLI_REF=<branch> sh`."
+            f"thin `litellm[cli]` install does not include (missing: {', '.join(missing)}). Install "
+            "`litellm[proxy]` and the rest of the proxy runtime with the fork installer: "
+            "`git clone https://github.com/519lab/litellm.git && litellm/scripts/install.sh --ref <tag-or-branch>`."
         )
 
     try:
