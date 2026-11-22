@@ -118,6 +118,6 @@ jobs:
     with:
       app-client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
       ref: ${{ needs.gate.outputs.sha }}
-      merge-note: "Merging deploys nothing by itself; the deployment picks up main through its own deploy step. Roll the CHANGELOG `[Unreleased]` entries into a dated version heading before merging, then tag the release on main"
+      merge-note: "Merging deploys nothing by itself; the deployment picks up main through its own deploy step. Roll the CHANGELOG `[Unreleased]` entries into a dated version heading on develop before merging; the release check on this pull request fails until they are, and the release workflow tags the version on main after the merge"
     secrets:
       app-private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}

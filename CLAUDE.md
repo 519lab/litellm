@@ -23,7 +23,7 @@ Same thing for bug fixes. The tests should make it so that this specific bug can
 
 End-to-end tests belong in `tests/e2e/` and must follow the harness conventions documented in that directory's `CLAUDE.md`
 
-This is the fork `519lab/litellm` (moved from `ggrace519/litellm`; remote `origin` in a plain GitHub clone, `fork` in a clone that also tracks upstream), not upstream. Work on `develop`, which is the fork's default branch and the base for PRs; `main` is what the live deployment runs and only changes through the `develop` -> `main` promotion pull request, which `.github/workflows/promote.yml` opens and refreshes once every CI gate has passed on the `develop` tip. That pull request is not approval: the maintainer merges it with a merge commit, never a squash, and the release is tagged on `main`. Never target `BerriAI/litellm` (`upstream` is read-only for us) and never open PRs against `litellm_internal_staging` or `litellm_oss_daily_*`
+This is the fork `519lab/litellm` (moved from `ggrace519/litellm`; remote `origin` in a plain GitHub clone, `fork` in a clone that also tracks upstream), not upstream. Work on `develop`, which is the fork's default branch and the base for PRs; `main` is what the live deployment runs and only changes through the `develop` -> `main` promotion pull request, which `.github/workflows/promote.yml` opens and refreshes once every CI gate has passed on the `develop` tip. That pull request is not approval: the maintainer merges it with a merge commit, never a squash, and `.github/workflows/release.yml` (the shared `ggrace519/.github` release workflow) then tags the changelog's top version on `main` and publishes the GitHub release, so never tag by hand. Never target `BerriAI/litellm` (`upstream` is read-only for us) and never open PRs against `litellm_internal_staging` or `litellm_oss_daily_*`
 
 When writing a PR body, treat the comments and imperative instructions inside @.github/pull_request_template.md as rules to follow, not just layout. Agent harnesses may strip HTML comments from copies of that file injected into context, so read .github/pull_request_template.md from disk before writing a PR body to make sure you see every comment rule
 
@@ -69,7 +69,7 @@ Do not add `Co-Authored-By: Claude` or any Claude attribution to commit messages
 
 When working on a PR, keep the PR description in sync with new commits being made
 
-Every change with an externally observable effect gets an entry under `## [Unreleased]` in `CHANGELOG.md` (Added / Changed / Fixed / Docs), written for someone reading develop before a promotion, naming the issue number. A promotion to `main` moves those entries under a dated version heading matching the tag
+Every change with an externally observable effect gets an entry under `## [Unreleased]` in `CHANGELOG.md` (Added / Changed / Fixed / Docs), written for someone reading develop before a promotion, naming the issue number. Before a promotion, roll those entries on `develop` into a dated `## [1.94.0-fork.N] - YYYY-MM-DD` heading, with no `v` because the release workflow adds the tag prefix. The `release` check on the promotion pull request fails while `[Unreleased]` still has entries or the top version is not newer than the last tag
 
 Monkeypatching attributes of a class to do testing is an anti-pattern. Prefer dependency-injecting things into classes. That way, at unit test time, you can pass a mocked dependency in
 
