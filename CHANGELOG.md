@@ -9,6 +9,8 @@ release a version is based on is the `version` in `pyproject.toml`.
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-11-23
+
 ### Fixed
 - Nine unit test files in `tests/test_litellm/proxy/enterprise_billing`, `proxy/memory`, `proxy/types_utils`, `rag`, `realtime_api`, `rerank_api` and `test_router` now run in CI. The CI test jobs list their directories explicitly and these were never added, so they had not run anywhere; all 157 tests in them pass. `tests/test_litellm/test_ci_test_paths.py` now fails when a test file under `tests/test_litellm` is not collected by any job's `test-path`
 - The Braintrust prompt wrapper example in `cookbook/litellm_proxy_server/` no longer prints the caller's Braintrust bearer token to stdout, and it rejects a `prompt_id` that is not a plain ID (letters, digits, `_`, `-`) with a 422. A `prompt_id` of `..` used to send the caller's token to a different Braintrust API path (CodeQL `py/partial-ssrf` #532)
