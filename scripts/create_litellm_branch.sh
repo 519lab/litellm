@@ -101,6 +101,12 @@ if [[ "$NEW_BRANCH_NAME" == litellm_* ]]; then
     print_warning "Removed existing litellm_ prefix from branch name"
 fi
 
+NEW_BRANCH_NAME="$(printf '%s' "$NEW_BRANCH_NAME" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9_-]+/_/g; s/^[^a-z0-9]+//')"
+if [ -z "$NEW_BRANCH_NAME" ]; then
+    print_error "No usable branch name left after normalizing it to the fork's litellm_<description> rule"
+    exit 1
+fi
+
 # Add litellm_ prefix
 NEW_BRANCH_NAME="litellm_${NEW_BRANCH_NAME}"
 

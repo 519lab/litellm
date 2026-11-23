@@ -495,20 +495,17 @@ Cursor is not supported: it has no equivalent file-based config to hot-patch thi
 
 #### Install the CLI
 
-`lite autoroute up` builds and runs a throwaway litellm proxy locally, so unlike the rest of this CLI it needs the proxy server runtime, not just the thin `litellm[cli]` client. Install `litellm[proxy]` (which ships the `lite` command too) with a single curl command -- no existing Python tooling required, `uv` is bootstrapped automatically if missing:
+`lite autoroute up` builds and runs a throwaway litellm proxy locally, so unlike the rest of this CLI it needs the proxy server runtime, not just the thin `litellm[cli]` client. Install `litellm[proxy]` (which ships the `lite` command too) with this fork's installer. It clones 519lab/litellm into `~/litellm` at the latest release, downloads a pinned, checksum-verified `uv`, and syncs `~/litellm/.venv` exactly to that release's `uv.lock` with the same extras the production image uses. It needs `git`, `curl` and a Rust toolchain (`cargo`, from https://rustup.rs) for the native extension:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/BerriAI/litellm/main/scripts/install.sh | sh
+git clone https://github.com/519lab/litellm.git /tmp/litellm-installer
+/tmp/litellm-installer/scripts/install.sh
+~/litellm/.venv/bin/lite --help
 ```
 
-To QA an unreleased branch or commit instead of the latest PyPI release, set `LITELLM_CLI_REF`:
+To QA an unreleased branch or commit instead of the latest release, pass `--ref <branch-or-commit>`. Running it again with a newer `--ref` upgrades in place, and `--dry-run` shows which packages an upgrade would change without touching the checkout or the venv. `scripts/install.sh --help` lists the rest of the options.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/BerriAI/litellm/<branch-or-commit>/scripts/install.sh | \
-  LITELLM_CLI_REF=<branch-or-commit> sh
-```
-
-The thin `scripts/install-cli.sh` installs only `litellm[cli]`, which is enough for `lite login`, `lite claude`, and `lite up`, but not for `lite autoroute up`; running it against a `litellm[cli]` install fails fast with a message telling you to install the proxy runtime.
+The thin `scripts/install-cli.sh` installs only the `cli` extra into `~/.local/share/litellm-cli-venv`, which is enough for `lite login`, `lite claude`, and `lite up`, but not for `lite autoroute up`; running it against a `litellm[cli]` install fails fast with a message telling you to install the proxy runtime.
 
 Point the CLI at your real proxy and key before running any `lite model-groups` or `lite autoroute` command -- like every other command in this CLI, they read `LITELLM_PROXY_URL`/`LITELLM_PROXY_API_KEY` (or `--base-url`/`--api-key`), no `lite login` required:
 
