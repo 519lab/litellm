@@ -20,4 +20,5 @@ query-filters:
 paths-ignore:
   - tests
   - docs
+  - cookbook
   - "**/*.md"

@@ -11,6 +11,14 @@ release a version is based on is the `version` in `pyproject.toml`.
 
 ### Fixed
 - The Braintrust prompt wrapper example in `cookbook/litellm_proxy_server/` no longer prints the caller's Braintrust bearer token to stdout, and it rejects a `prompt_id` that is not a plain ID (letters, digits, `_`, `-`) with a 422. A `prompt_id` of `..` used to send the caller's token to a different Braintrust API path (CodeQL `py/partial-ssrf` #532)
+- The OpenSSF Scorecard workflow runs on pushes to `develop` and can be started by hand. Its push trigger named `main`, but the job only runs on the default branch, which is `develop`, so every push run was skipped and the Scorecard alerts were only refreshed by the weekly schedule
+- `ui/litellm-dashboard/e2e_tests/run_e2e.sh` installs the dashboard with `npm ci` from the committed lockfile, once. It ran `npm install --silent 2>/dev/null || true` twice, which could resolve versions other than the lockfile's and hid install failures until the build or Playwright failed later
+
+### Changed
+- CodeQL skips `cookbook/`, which holds upstream example servers that the fork does not ship, alongside `tests` and `docs`
+- `terraform/provider/osv-scanner.toml` ignores GO-2026-5932 (the unmaintained `golang.org/x/crypto/openpgp`) until 2027-05-23. The provider never imports that package and the only fix is an untagged pseudo-version; the CI scan already passed through call analysis, but scans without a Go toolchain, such as Scorecard's, reported it
+### Changed
+- Removed `enterprise/dist/` and `litellm-proxy-extras/dist/`, 117 wheels and 116 source archives of old `litellm-enterprise` (up to 0.1.32) and `litellm-proxy-extras` (up to 0.4.60) releases that upstream force-added despite `dist/` being in `.gitignore`. Nothing builds or installs from them (both packages are uv workspace members built from source, now 0.1.51 and 0.4.79.post2), one of the committed extras wheels did not match its published release, and they were the source of all 117 OpenSSF Scorecard Binary-Artifacts alerts
 
 ## [2.1.0] - 2026-11-22
 
