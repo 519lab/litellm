@@ -164,7 +164,7 @@ def transform_braintrust_response(
 
 @app.get("/beta/litellm_prompt_management")
 async def get_prompt(
-    prompt_id: str = Query(..., description="The Braintrust prompt ID to fetch"),
+    prompt_id: str = Query(..., description="The Braintrust prompt ID to fetch", pattern=r"^[A-Za-z0-9_-]+$"),
     authorization: Optional[str] = Header(
         None, description="Bearer token for Braintrust API"
     ),
@@ -198,9 +198,6 @@ async def get_prompt(
         "Authorization": f"Bearer {braintrust_token}",
         "Accept": "application/json",
     }
-    print(f"headers: {headers}")
-    print(f"braintrust_url: {braintrust_url}")
-    print(f"braintrust_token: {braintrust_token}")
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
