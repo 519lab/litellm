@@ -9,6 +9,9 @@ release a version is based on is the `version` in `pyproject.toml`.
 
 ## [Unreleased]
 
+### Fixed
+- The Braintrust prompt wrapper example in `cookbook/litellm_proxy_server/` no longer prints the caller's Braintrust bearer token to stdout, and it rejects a `prompt_id` that is not a plain ID (letters, digits, `_`, `-`) with a 422. A `prompt_id` of `..` used to send the caller's token to a different Braintrust API path (CodeQL `py/partial-ssrf` #532)
+
 ## [2.1.0] - 2026-11-22
 
 ### Fixed
