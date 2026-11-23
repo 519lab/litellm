@@ -9,6 +9,8 @@ release a version is based on is the `version` in `pyproject.toml`.
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-11-23
+
 ### Fixed
 - Codecov posts its `codecov/patch` and `codecov/project` statuses after the other checks on a commit finish instead of on the first coverage upload. With `wait_for_ci: false` and the default `after_n_builds: 1` it reported as soon as one test job uploaded, scoring the changed lines against coverage carried forward from the base commit, and it did not correct the status when the other uploads arrived (#124 showed `0.00% of diff hit` while Codecov's own data for the commit had 11 of 11 lines covered)
 - `GET /credentials`, `PATCH /credentials/{name}` and `DELETE /credentials/{name}` return the error's status code when they fail. They returned the error object instead of raising it, so a failure such as updating a credential that does not exist came back as HTTP 200 with a 404 body, and clients, the dashboard included, saw it as success (CodeQL #585 #586 #587)
