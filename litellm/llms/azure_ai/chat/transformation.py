@@ -12,6 +12,7 @@ from litellm.litellm_core_utils.prompt_templates.common_utils import (
     _audio_or_image_in_message_content,
     convert_content_list_to_str,
 )
+from litellm.litellm_core_utils.url_utils import url_host_matches_domain
 from litellm.llms.azure.common_utils import BaseAzureLLM
 from litellm.llms.base_llm.chat.transformation import LiteLLMLoggingObj
 from litellm.llms.openai.common_utils import drop_params_from_unprocessable_entity_error
@@ -133,7 +134,7 @@ class AzureAIStudioConfig(OpenAIConfig):
             query_params["api-version"] = api_version
 
         # Add the path to the base URL
-        if "services.ai.azure.com" in api_base:
+        if url_host_matches_domain(api_base, ("services.ai.azure.com",)):
             new_url = _add_path_to_api_base(api_base=api_base, ending_path="/models/chat/completions")
         else:
             new_url = _add_path_to_api_base(api_base=api_base, ending_path="/chat/completions")

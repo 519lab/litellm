@@ -4617,3 +4617,34 @@ async def test_pass_through_relay_full_consumption_logs_no_partial_relay_warning
     finally:
         cleanup()
         await fake_client.aclose()
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("https://api.openai.com/v1/chat/completions", "openai"),
+        ("https://openai.azure.com/openai/deployments/x", "openai"),
+        ("https://openai.com.evil.example/v1/chat/completions", "generic"),
+        ("https://myopenai.com/v1/chat/completions", "generic"),
+        ("https://api.anthropic.com/v1/messages", "anthropic"),
+    ],
+)
+def test_get_endpoint_type_matches_openai_hosts_on_a_dot_boundary(url, expected):
+    from litellm.proxy.pass_through_endpoints.pass_through_endpoints import HttpPassThroughEndpointHelpers
+
+    assert HttpPassThroughEndpointHelpers.get_endpoint_type(url).value == expected
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("https://generativelanguage.googleapis.com/v1beta/models/x", "gemini"),
+        ("https://evilgenerativelanguage.googleapis.com/v1beta/models/x", "vertex_ai"),
+    ],
+)
+def test_vertex_passthrough_provider_detection_requires_the_gemini_host(url, expected):
+    from litellm.proxy.pass_through_endpoints.llm_provider_handlers.vertex_passthrough_logging_handler import (
+        VertexPassthroughLoggingHandler,
+    )
+
+    assert VertexPassthroughLoggingHandler._get_custom_llm_provider_from_url(url) == expected

@@ -9,6 +9,10 @@ release a version is based on is the `version` in `pyproject.toml`.
 
 ## [Unreleased]
 
+### Fixed
+- Provider and format detection that looked for a domain anywhere in a URL now checks the URL's host on a dot boundary, through one shared helper (`url_host_matches_domain` / `hostname_matches_domain` in `litellm_core_utils/url_utils.py`). Hosts such as `gateway.ai.cloudflare.com.evil.example` or a path containing `services.ai.azure.com` no longer switch on Cloudflare AI Gateway URL shaping, the Azure AI Foundry `/models` path, OpenAI pass-through logging, Cursor pass-through logging, Gemini cost attribution or Phoenix Cloud handling (CodeQL `py/incomplete-url-substring-sanitization` #561-#564, #567-#571)
+- The MCP BYOK OAuth loopback `redirect_uri` check rejects userinfo (`user@127.0.0.1`) and backslashes, as the trusted-redirect check beside it already did. `http://evil.com\@127.0.0.1/cb` used to pass and was only kept on loopback by the framework percent-encoding the backslash in the `Location` header (CodeQL #600)
+
 ## [2.1.0] - 2026-11-22
 
 ### Fixed
