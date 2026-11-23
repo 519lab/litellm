@@ -1504,9 +1504,9 @@ async def validate_blocked_words_file(request: Dict[str, str]):
         }
     except yaml.YAMLError as e:
         return {"valid": False, "error": f"Invalid YAML syntax: {str(e)}"}
-    except Exception as e:
+    except Exception:
         verbose_proxy_logger.exception("Error validating blocked words file")
-        return {"valid": False, "error": f"Validation error: {str(e)}"}
+        return {"valid": False, "error": "Validation error"}
 
 
 def _get_field_type_from_annotation(field_annotation: Any) -> str:

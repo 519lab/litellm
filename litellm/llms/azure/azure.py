@@ -40,6 +40,7 @@ from .common_utils import (
     AzureOpenAIError,
     BaseAzureLLM,
     get_azure_ad_token_from_oidc,
+    is_cloudflare_ai_gateway,
     process_azure_headers,
     select_azure_base_url_or_endpoint,
 )
@@ -216,7 +217,7 @@ class AzureChatCompletion(BaseAzureLLM, BaseLLM):
 
             ### CHECK IF CLOUDFLARE AI GATEWAY ###
             ### if so - set the model as part of the base url
-            if api_base is not None and "gateway.ai.cloudflare.com" in api_base:
+            if is_cloudflare_ai_gateway(api_base):
                 client = self._init_azure_client_for_cloudflare_ai_gateway(
                     api_base=api_base,
                     model=model,
@@ -1433,7 +1434,7 @@ class AzureChatCompletion(BaseAzureLLM, BaseLLM):
         prompt: Optional[str] = None,
     ) -> dict:
         client_session = litellm.client_session or httpx.Client()
-        if api_base is not None and "gateway.ai.cloudflare.com" in api_base:
+        if is_cloudflare_ai_gateway(api_base):
             ## build base url - assume api base includes resource name
             if not api_base.endswith("/"):
                 api_base += "/"

@@ -41,6 +41,7 @@ jobs:
         tests/test_litellm/proxy/image_endpoints
         tests/test_litellm/proxy/vector_store_endpoints
         tests/test_litellm/proxy/agent_endpoints
+        tests/test_litellm/proxy/credential_endpoints
         tests/test_litellm/proxy/a2a
         tests/test_litellm/proxy/discovery_endpoints
         tests/test_litellm/proxy/health_endpoints
@@ -51,6 +52,9 @@ jobs:
         tests/test_litellm/proxy/realtime_endpoints
         tests/test_litellm/proxy/ui_crud_endpoints
         tests/test_litellm/proxy/utils
+        tests/test_litellm/proxy/enterprise_billing
+        tests/test_litellm/proxy/memory
+        tests/test_litellm/proxy/types_utils
       workers: 2
       reruns: 2
       artifact-name: proxy-endpoints

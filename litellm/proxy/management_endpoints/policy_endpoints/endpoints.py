@@ -827,7 +827,7 @@ async def _stream_competitor_events(
                     yield f"data: {json.dumps({'type': 'competitor', 'name': name})}\n\n"
         except Exception as e:
             verbose_proxy_logger.error("LLM competitor refinement failed: %s", e)
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Competitor discovery failed'})}\n\n"
             return
     elif data.competitors and not data.instruction:
         # Free-form mode (no instruction): just emit existing
@@ -843,7 +843,7 @@ async def _stream_competitor_events(
                     yield f"data: {json.dumps({'type': 'competitor', 'name': name})}\n\n"
         except Exception as e:
             verbose_proxy_logger.error("LLM competitor streaming failed: %s", e)
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Competitor discovery failed'})}\n\n"
             return
 
     yield f"data: {json.dumps({'type': 'status', 'message': f'Generating alternate spellings for {len(competitors)} competitors...'})}\n\n"

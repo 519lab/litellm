@@ -80,6 +80,10 @@ class TestCursorRouteDetection:
         handler = PassThroughEndpointLogging()
         assert not handler.is_cursor_route("https://api.openai.com/v1/completions")
 
+    def test_should_not_detect_look_alike_cursor_host(self):
+        handler = PassThroughEndpointLogging()
+        assert not handler.is_cursor_route("https://api.cursor.com.evil.example/v0/agents")
+
 
 class TestCursorPassthroughHandler:
     def test_should_log_agent_creation_response(self):
