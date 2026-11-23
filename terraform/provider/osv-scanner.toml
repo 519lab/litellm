@@ -1,0 +1,4 @@
+[[IgnoredVulns]]
+id = "GO-2026-5932"
+ignoreUntil = 2027-05-23
+reason = "golang.org/x/crypto/openpgp is unmaintained, but this provider never imports it (go list -deps ./... has no openpgp package) and the only fix is an untagged pseudo-version; recheck when x/crypto tags a release"

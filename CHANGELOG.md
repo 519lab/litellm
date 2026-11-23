@@ -9,6 +9,14 @@ release a version is based on is the `version` in `pyproject.toml`.
 
 ## [Unreleased]
 
+### Fixed
+- The OpenSSF Scorecard workflow runs on pushes to `develop` and can be started by hand. Its push trigger named `main`, but the job only runs on the default branch, which is `develop`, so every push run was skipped and the Scorecard alerts were only refreshed by the weekly schedule
+- `ui/litellm-dashboard/e2e_tests/run_e2e.sh` installs the dashboard with `npm ci` from the committed lockfile, once. It ran `npm install --silent 2>/dev/null || true` twice, which could resolve versions other than the lockfile's and hid install failures until the build or Playwright failed later
+
+### Changed
+- CodeQL skips `cookbook/`, which holds upstream example servers that the fork does not ship, alongside `tests` and `docs`
+- `terraform/provider/osv-scanner.toml` ignores GO-2026-5932 (the unmaintained `golang.org/x/crypto/openpgp`) until 2027-05-23. The provider never imports that package and the only fix is an untagged pseudo-version; the CI scan already passed through call analysis, but scans without a Go toolchain, such as Scorecard's, reported it
+
 ## [2.1.0] - 2026-11-22
 
 ### Fixed
