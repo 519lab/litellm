@@ -649,7 +649,7 @@ if MCP_AVAILABLE:
             return {
                 "tools": [],
                 "error": "server_error",
-                "message": f"Failed to get tools from server {server.name}: {str(e)}",
+                "message": f"Failed to get tools from server {server.name}: {classify_list_exception(e).tag}",
             }
         return {
             "tools": list_tools_result,
@@ -855,11 +855,7 @@ if MCP_AVAILABLE:
                         list_tools_result.extend(tools_result)
                     except Exception as e:
                         verbose_logger.exception(f"Error getting tools from {server.name}: {e}")
-                        errors.append(
-                            f"{get_server_prefix(server)}: {classify_list_exception(e).tag}"
-                            if isinstance(e, (MCPServerListError, MCPUpstreamAuthError))
-                            else f"{get_server_prefix(server)}: {str(e)}"
-                        )
+                        errors.append(f"{get_server_prefix(server)}: {classify_list_exception(e).tag}")
                         continue
 
                 if errors and not list_tools_result:
@@ -897,7 +893,7 @@ if MCP_AVAILABLE:
             return {
                 "tools": [],
                 "error": "unexpected_error",
-                "message": f"An unexpected error occurred: {str(e)}",
+                "message": "An unexpected error occurred while listing MCP tools",
             }
 
     @router.post("/tools/call", dependencies=[Depends(user_api_key_auth)])
@@ -1082,7 +1078,7 @@ if MCP_AVAILABLE:
                 status_code=500,
                 detail={
                     "error": "internal_server_error",
-                    "message": f"An unexpected error occurred: {str(e)}",
+                    "message": "An unexpected error occurred while calling the MCP tool",
                 },
             )
 

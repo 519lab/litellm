@@ -903,3 +903,34 @@ class TestBuildCompetitorGuardrailDefinitions:
         )
         for defn in result:
             assert len(defn["litellm_params"]["blocked_words"]) > 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("competitors", "instruction"),
+    [(None, None), (["Acme Air"], "add more")],
+)
+async def test_competitor_stream_error_event_does_not_echo_exception(competitors, instruction):
+    import json
+    from unittest.mock import AsyncMock
+
+    from litellm.proxy.management_endpoints.policy_endpoints.endpoints import (
+        EnrichTemplateRequest,
+        _stream_competitor_events,
+    )
+
+    router = MagicMock()
+    router.acompletion = AsyncMock(side_effect=RuntimeError("upstream 401 for key sk-secret-xyz at http://10.0.0.9"))
+    data = EnrichTemplateRequest(
+        template_id="t", parameters={}, competitors=competitors, instruction=instruction
+    )
+    llm_enrichment = {"prompt": "competitors of {{brand}}", "parameter": "brand"}
+
+    with patch("litellm.proxy.proxy_server.llm_router", router):
+        events = [
+            json.loads(e.removeprefix("data: ").strip())
+            async for e in _stream_competitor_events(data, {}, llm_enrichment, "BrandCo", "gpt-4o")
+        ]
+
+    errors = [e for e in events if e["type"] == "error"]
+    assert errors == [{"type": "error", "message": "Competitor discovery failed"}]

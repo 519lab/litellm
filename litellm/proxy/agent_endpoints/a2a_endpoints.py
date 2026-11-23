@@ -490,7 +490,7 @@ async def _handle_stream_message(
                         "id": request_id,
                         "error": {
                             "code": -32603,
-                            "message": f"Streaming error: {str(e)}",
+                            "message": "Streaming error",
                         },
                     }
                 )
@@ -973,4 +973,4 @@ async def invoke_agent_a2a(
             )
         except Exception:
             pass
-        return _jsonrpc_error(body.get("id"), -32603, f"Internal error: {str(e)}", 500)
+        return _jsonrpc_error(body.get("id"), -32603, "Internal error", 500)
