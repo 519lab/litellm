@@ -110,6 +110,18 @@ def _normalize_host(host: str) -> str:
     return host.lower().rstrip(".")
 
 
+def hostname_matches_domain(hostname: str, domains: Tuple[str, ...]) -> bool:
+    """True if ``hostname`` is one of ``domains`` or a subdomain of one, on a dot boundary."""
+    normalized = _normalize_host(hostname)
+    return any(normalized == domain or normalized.endswith(f".{domain}") for domain in domains)
+
+
+def url_host_matches_domain(url: str, domains: Tuple[str, ...]) -> bool:
+    """True if the host of ``url`` (scheme optional) is one of ``domains`` or a subdomain of one."""
+    hostname = urlparse(url if "://" in url else f"//{url}").hostname
+    return hostname is not None and hostname_matches_domain(hostname, domains)
+
+
 def _default_port_for_scheme(scheme: str) -> int:
     return 443 if scheme == "https" else 80
 

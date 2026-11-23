@@ -10,6 +10,7 @@ from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, OpenAI
 import litellm
 from litellm._logging import verbose_logger
 from litellm.caching.caching import DualCache
+from litellm.litellm_core_utils.url_utils import url_host_matches_domain
 from litellm.llms.base_llm.chat.transformation import BaseLLMException
 from litellm.llms.openai.common_utils import BaseOpenAILLM
 from litellm.secret_managers.get_azure_ad_token_provider import (
@@ -236,6 +237,10 @@ def get_azure_ad_token_from_oidc(
     )
 
     return azure_ad_token_access_token
+
+
+def is_cloudflare_ai_gateway(api_base: str | None) -> bool:
+    return api_base is not None and url_host_matches_domain(api_base, ("gateway.ai.cloudflare.com",))
 
 
 def select_azure_base_url_or_endpoint(azure_client_params: dict):

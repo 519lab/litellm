@@ -154,6 +154,14 @@ def validate_loopback_redirect_uri(redirect_uri: str) -> None:
         _oauth_invalid_request(
             "redirect_uri must not contain a URL fragment (#...).",
         )
+    if parsed.username is not None or parsed.password is not None:
+        _oauth_invalid_request(
+            "redirect_uri must not contain userinfo (user:pass@host).",
+        )
+    if "\\" in parsed.netloc:
+        _oauth_invalid_request(
+            "redirect_uri host must not contain backslashes.",
+        )
     host = (parsed.hostname or "").lower()
     if host == "localhost":
         return

@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 import httpx
 
 from litellm.litellm_core_utils.litellm_logging import Logging as LiteLLMLoggingObj
+from litellm.litellm_core_utils.url_utils import hostname_matches_domain
 from litellm.proxy._types import PassThroughEndpointLoggingResultValues
 from litellm.types.passthrough_endpoints.pass_through_endpoints import (
     PassthroughStandardLoggingPayload,
@@ -384,7 +385,7 @@ class PassThroughEndpointLogging:
         if custom_llm_provider == "cursor":
             return True
         parsed_url = urlparse(url_route)
-        if parsed_url.hostname and "api.cursor.com" in parsed_url.hostname:
+        if parsed_url.hostname and hostname_matches_domain(parsed_url.hostname, ("api.cursor.com",)):
             return True
         for route in self.TRACKED_CURSOR_ROUTES:
             if route in url_route:

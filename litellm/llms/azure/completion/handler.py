@@ -6,7 +6,7 @@ from litellm.litellm_core_utils.prompt_templates.factory import prompt_factory
 from litellm.utils import CustomStreamWrapper, ModelResponse, TextCompletionResponse
 
 from ...openai.completion.transformation import OpenAITextCompletionConfig
-from ..common_utils import AzureOpenAIError, BaseAzureLLM
+from ..common_utils import AzureOpenAIError, BaseAzureLLM, is_cloudflare_ai_gateway
 
 openai_text_completion_config = OpenAITextCompletionConfig()
 
@@ -55,7 +55,7 @@ class AzureTextCompletion(BaseAzureLLM):
 
             ### CHECK IF CLOUDFLARE AI GATEWAY ###
             ### if so - set the model as part of the base url
-            if api_base is not None and "gateway.ai.cloudflare.com" in api_base:
+            if is_cloudflare_ai_gateway(api_base):
                 ## build base url - assume api base includes resource name
                 client = self._init_azure_client_for_cloudflare_ai_gateway(
                     api_key=api_key,
