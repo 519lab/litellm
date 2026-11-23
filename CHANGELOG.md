@@ -16,6 +16,8 @@ release a version is based on is the `version` in `pyproject.toml`.
 ### Changed
 - CodeQL skips `cookbook/`, which holds upstream example servers that the fork does not ship, alongside `tests` and `docs`
 - `terraform/provider/osv-scanner.toml` ignores GO-2026-5932 (the unmaintained `golang.org/x/crypto/openpgp`) until 2027-05-23. The provider never imports that package and the only fix is an untagged pseudo-version; the CI scan already passed through call analysis, but scans without a Go toolchain, such as Scorecard's, reported it
+### Changed
+- Removed `enterprise/dist/` and `litellm-proxy-extras/dist/`, 117 wheels and 116 source archives of old `litellm-enterprise` (up to 0.1.32) and `litellm-proxy-extras` (up to 0.4.60) releases that upstream force-added despite `dist/` being in `.gitignore`. Nothing builds or installs from them (both packages are uv workspace members built from source, now 0.1.51 and 0.4.79.post2), one of the committed extras wheels did not match its published release, and they were the source of all 117 OpenSSF Scorecard Binary-Artifacts alerts
 
 ## [2.1.0] - 2026-11-22
 
