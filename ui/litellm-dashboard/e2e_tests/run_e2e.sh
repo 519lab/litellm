@@ -106,7 +106,7 @@ export LITELLM_LICENSE="${LITELLM_LICENSE:-}"
 # --- Rebuild UI from source ---
 echo "=== Building UI from source ==="
 cd "$DASHBOARD_DIR"
-npm install --silent 2>/dev/null || true
+npm ci
 npm run build
 # Copy the fresh build to the proxy's static UI directory
 cp -r "$DASHBOARD_DIR/out/" "$REPO_ROOT/litellm/proxy/_experimental/out/"
@@ -182,7 +182,6 @@ PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAM
 # --- Playwright ---
 echo "=== Installing Playwright dependencies ==="
 cd "$DASHBOARD_DIR"
-npm install --silent 2>/dev/null || true
 npx playwright install chromium --with-deps 2>/dev/null || npx playwright install chromium
 
 echo "=== Running Playwright tests ==="
