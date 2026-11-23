@@ -9,6 +9,9 @@ release a version is based on is the `version` in `pyproject.toml`.
 
 ## [Unreleased]
 
+### Changed
+- Removed `enterprise/dist/` and `litellm-proxy-extras/dist/`, 117 wheels and 116 source archives of old `litellm-enterprise` (up to 0.1.32) and `litellm-proxy-extras` (up to 0.4.60) releases that upstream force-added despite `dist/` being in `.gitignore`. Nothing builds or installs from them (both packages are uv workspace members built from source, now 0.1.51 and 0.4.79.post2), one of the committed extras wheels did not match its published release, and they were the source of all 117 OpenSSF Scorecard Binary-Artifacts alerts
+
 ## [2.1.0] - 2026-11-22
 
 ### Fixed
