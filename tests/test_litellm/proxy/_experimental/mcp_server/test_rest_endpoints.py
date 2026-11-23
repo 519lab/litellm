@@ -2783,3 +2783,122 @@ class TestRestListToolsetFiltering:
             )
 
         assert [tool.name for tool in result] == ["lookup_status"]
+
+
+LEAKY_ERROR = "connect failed for http://10.0.0.5:8080/mcp?token=sekret-123"
+
+
+class _StubServer:
+    def __init__(self, name):
+        self.server_id = name
+        self.alias = name
+        self.server_name = name
+        self.name = name
+        self.allowed_tools = None
+        self.mcp_info = {"server_name": name}
+        self.available_on_public_internet = True
+        self.auth_type = None
+
+
+@pytest.mark.asyncio
+class TestRestErrorsDoNotLeakUpstreamText:
+    def _patch_servers(self, monkeypatch, servers):
+        async def fake_contexts(user_api_key_auth):
+            return [user_api_key_auth]
+
+        async def fake_get_allowed_mcp_servers(*args, **kwargs):
+            return list(servers)
+
+        monkeypatch.setattr(rest_endpoints, "build_effective_auth_contexts", fake_contexts, raising=False)
+        monkeypatch.setattr(
+            rest_endpoints.global_mcp_server_manager,
+            "get_allowed_mcp_servers",
+            fake_get_allowed_mcp_servers,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            rest_endpoints.global_mcp_server_manager,
+            "get_mcp_server_by_id",
+            lambda server_id: servers.get(server_id),
+            raising=False,
+        )
+
+    async def test_aggregate_list_reports_fault_category_not_exception_text(self, monkeypatch):
+        self._patch_servers(monkeypatch, {"a": _StubServer("a"), "b": _StubServer("b")})
+
+        async def failing_get_tools(server, *args, **kwargs):
+            raise RuntimeError(LEAKY_ERROR)
+
+        monkeypatch.setattr(rest_endpoints, "_get_tools_for_single_server", failing_get_tools, raising=False)
+
+        result = await rest_endpoints.list_tool_rest_api(
+            _build_request(path="/mcp-rest/tools/list", method="GET"),
+            server_id=None,
+            user_api_key_dict=UserAPIKeyAuth(),
+        )
+
+        assert result["error"] == "partial_failure"
+        assert "internal" in result["message"]
+        assert "10.0.0.5" not in result["message"]
+        assert "sekret" not in result["message"]
+
+    async def test_single_server_list_reports_fault_category_not_exception_text(self, monkeypatch):
+        self._patch_servers(monkeypatch, {"a": _StubServer("a")})
+
+        async def failing_get_tools(server, *args, **kwargs):
+            raise RuntimeError(LEAKY_ERROR)
+
+        monkeypatch.setattr(rest_endpoints, "_get_tools_for_single_server", failing_get_tools, raising=False)
+
+        result = await rest_endpoints.list_tool_rest_api(
+            _build_request(path="/mcp-rest/tools/list", method="GET"),
+            server_id="a",
+            user_api_key_dict=UserAPIKeyAuth(),
+        )
+
+        assert result["error"] == "server_error"
+        assert result["message"] == "Failed to get tools from server a: internal"
+
+    async def test_unexpected_list_error_returns_fixed_message(self, monkeypatch):
+        async def exploding_contexts(user_api_key_auth):
+            raise RuntimeError(LEAKY_ERROR)
+
+        monkeypatch.setattr(rest_endpoints, "build_effective_auth_contexts", exploding_contexts, raising=False)
+
+        result = await rest_endpoints.list_tool_rest_api(
+            _build_request(path="/mcp-rest/tools/list", method="GET"),
+            server_id=None,
+            user_api_key_dict=UserAPIKeyAuth(),
+        )
+
+        assert result["error"] == "unexpected_error"
+        assert result["message"] == "An unexpected error occurred while listing MCP tools"
+
+    async def test_unexpected_tool_call_error_returns_fixed_message(self, monkeypatch):
+        stub = _StubServer("server-1")
+        self._patch_servers(monkeypatch, {"server-1": stub})
+
+        async def fake_add_litellm_data_to_request(**kwargs):
+            return kwargs.get("data", {})
+
+        async def exploding_execute(**kwargs):
+            raise RuntimeError(LEAKY_ERROR)
+
+        monkeypatch.setattr(
+            "litellm.proxy.proxy_server.add_litellm_data_to_request", fake_add_litellm_data_to_request, raising=False
+        )
+        monkeypatch.setattr("litellm.proxy.proxy_server.proxy_config", {}, raising=False)
+        monkeypatch.setattr(rest_endpoints, "execute_mcp_tool", exploding_execute, raising=False)
+
+        with pytest.raises(HTTPException) as exc_info:
+            await rest_endpoints.call_tool_rest_api(
+                _build_request(
+                    path="/mcp-rest/tools/call",
+                    method="POST",
+                    json_body={"server_id": "server-1", "name": "demo-tool", "arguments": {}},
+                ),
+                user_api_key_dict=UserAPIKeyAuth(),
+            )
+
+        assert exc_info.value.status_code == 500
+        assert exc_info.value.detail["message"] == "An unexpected error occurred while calling the MCP tool"

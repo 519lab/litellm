@@ -870,7 +870,7 @@ async def test_task_method_failure_hook_uses_enriched_request_data():
         return enriched
 
     mock_handler = MagicMock()
-    mock_handler.post = AsyncMock(side_effect=RuntimeError("upstream failed"))
+    mock_handler.post = AsyncMock(side_effect=RuntimeError("upstream failed at http://10.0.0.7:9000/agent"))
 
     mock_proxy_logging = MagicMock()
     mock_proxy_logging.pre_call_hook = AsyncMock(
@@ -911,6 +911,7 @@ async def test_task_method_failure_hook_uses_enriched_request_data():
 
     body = json.loads(response.body.decode())
     assert body["error"]["code"] == -32603
+    assert body["error"]["message"] == "Internal error"
     failure_data = mock_proxy_logging.post_call_failure_hook.await_args.kwargs[
         "request_data"
     ]

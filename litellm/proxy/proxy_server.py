@@ -6996,10 +6996,7 @@ async def async_assistants_data_generator(response, user_api_key_dict: UserAPIKe
             # chunk = chunk.model_dump_json(exclude_none=True)
             async for c in chunk:  # type: ignore
                 c = c.model_dump_json(exclude_none=True)
-                try:
-                    yield f"data: {c}\n\n"
-                except Exception as e:
-                    yield f"data: {str(e)}\n\n"
+                yield f"data: {c}\n\n"
 
         # Streaming is done, yield the [DONE] chunk
         done_message = "[DONE]"
@@ -7430,10 +7427,7 @@ async def async_data_generator(
                 break
 
             if not raw_passthrough:
-                try:
-                    yield _format_streaming_sse_chunk(chunk=chunk)
-                except Exception as e:
-                    yield f"data: {str(e)}\n\n"
+                yield _format_streaming_sse_chunk(chunk=chunk)
 
             if pending_fallback_event:
                 yield _format_fallback_metadata_sse_event(
