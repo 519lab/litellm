@@ -10,6 +10,7 @@ release a version is based on is the `version` in `pyproject.toml`.
 ## [Unreleased]
 
 ### Fixed
+- Nine unit test files in `tests/test_litellm/proxy/enterprise_billing`, `proxy/memory`, `proxy/types_utils`, `rag`, `realtime_api`, `rerank_api` and `test_router` now run in CI. The CI test jobs list their directories explicitly and these were never added, so they had not run anywhere; all 157 tests in them pass. `tests/test_litellm/test_ci_test_paths.py` now fails when a test file under `tests/test_litellm` is not collected by any job's `test-path`
 - The OpenSSF Scorecard workflow runs on pushes to `develop` and can be started by hand. Its push trigger named `main`, but the job only runs on the default branch, which is `develop`, so every push run was skipped and the Scorecard alerts were only refreshed by the weekly schedule
 - `ui/litellm-dashboard/e2e_tests/run_e2e.sh` installs the dashboard with `npm ci` from the committed lockfile, once. It ran `npm install --silent 2>/dev/null || true` twice, which could resolve versions other than the lockfile's and hid install failures until the build or Playwright failed later
 

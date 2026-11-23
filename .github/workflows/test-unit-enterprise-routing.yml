@@ -30,6 +30,7 @@ jobs:
         tests/test_litellm/google_genai
         tests/test_litellm/router_utils
         tests/test_litellm/router_strategy
+        tests/test_litellm/test_router
       workers: 2
       reruns: 2
       artifact-name: enterprise-routing

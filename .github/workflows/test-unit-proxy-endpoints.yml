@@ -51,6 +51,9 @@ jobs:
         tests/test_litellm/proxy/realtime_endpoints
         tests/test_litellm/proxy/ui_crud_endpoints
         tests/test_litellm/proxy/utils
+        tests/test_litellm/proxy/enterprise_billing
+        tests/test_litellm/proxy/memory
+        tests/test_litellm/proxy/types_utils
       workers: 2
       reruns: 2
       artifact-name: proxy-endpoints
