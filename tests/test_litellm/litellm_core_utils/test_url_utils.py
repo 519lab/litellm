@@ -535,3 +535,32 @@ def test_assert_same_origin_error_message_does_not_leak_hostnames():
     detail = str(exc.value)
     assert "attacker.example.com" not in detail
     assert "api.internal-corp.example" not in detail
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("https://gateway.ai.cloudflare.com/v1/acct/gw/azure-openai/res", True),
+        ("https://GATEWAY.ai.cloudflare.com./v1", True),
+        ("gateway.ai.cloudflare.com/v1/acct", True),
+        ("https://eu.gateway.ai.cloudflare.com/v1", True),
+        ("https://gateway.ai.cloudflare.com.evil.example/v1", False),
+        ("https://evil.example/gateway.ai.cloudflare.com", False),
+        ("https://notgateway.ai.cloudflare.com/v1", False),
+        ("https://evil.example/?next=https://gateway.ai.cloudflare.com", False),
+        ("not a url", False),
+        ("", False),
+    ],
+)
+def test_url_host_matches_domain_requires_the_host_on_a_dot_boundary(url, expected):
+    from litellm.litellm_core_utils.url_utils import url_host_matches_domain
+
+    assert url_host_matches_domain(url, ("gateway.ai.cloudflare.com",)) is expected
+
+
+def test_cloudflare_gateway_detection_ignores_look_alike_hosts():
+    from litellm.llms.azure.common_utils import is_cloudflare_ai_gateway
+
+    assert is_cloudflare_ai_gateway("https://gateway.ai.cloudflare.com/v1/a/b/azure-openai/r") is True
+    assert is_cloudflare_ai_gateway("https://gateway.ai.cloudflare.com.evil.example/v1") is False
+    assert is_cloudflare_ai_gateway(None) is False

@@ -8,6 +8,7 @@ import httpx
 import litellm
 from litellm._logging import verbose_proxy_logger
 from litellm.litellm_core_utils.litellm_logging import Logging as LiteLLMLoggingObj
+from litellm.litellm_core_utils.url_utils import hostname_matches_domain
 from litellm.llms.vertex_ai.gemini.vertex_and_google_ai_studio_gemini import (
     ModelResponseIterator as VertexModelResponseIterator,
 )
@@ -332,6 +333,8 @@ class VertexPassthroughLoggingHandler:
         """Handle Vertex :embedContent and :batchEmbedContents endpoint responses."""
         from litellm.llms.vertex_ai.gemini_embeddings.batch_embed_content_transformation import (
             process_embed_content_response,
+        )
+        from litellm.llms.vertex_ai.gemini_embeddings.batch_embed_content_transformation import (
             process_response as process_batch_embed_response,
         )
 
@@ -537,7 +540,7 @@ class VertexPassthroughLoggingHandler:
     @staticmethod
     def _get_custom_llm_provider_from_url(url: str) -> str:
         parsed_url = urlparse(url)
-        if parsed_url.hostname and parsed_url.hostname.endswith("generativelanguage.googleapis.com"):
+        if parsed_url.hostname and hostname_matches_domain(parsed_url.hostname, ("generativelanguage.googleapis.com",)):
             return litellm.LlmProviders.GEMINI.value
         return litellm.LlmProviders.VERTEX_AI.value
 

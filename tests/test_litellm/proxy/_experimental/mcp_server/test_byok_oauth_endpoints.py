@@ -1137,6 +1137,33 @@ def test_validate_loopback_redirect_uri_rejects_malformed_cleanly():
     assert exc.value.status_code == 400
 
 
+@pytest.mark.parametrize(
+    "redirect_uri",
+    [
+        "http://evil.com\\@127.0.0.1/cb",
+        "http://user:pass@127.0.0.1:3000/cb",
+        "http://evil.com@localhost/cb",
+    ],
+)
+def test_validate_loopback_redirect_uri_rejects_userinfo_and_backslashes(redirect_uri):
+    from litellm.proxy._experimental.mcp_server.oauth_utils import (
+        validate_loopback_redirect_uri,
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        validate_loopback_redirect_uri(redirect_uri)
+    assert exc.value.status_code == 400
+
+
+def test_validate_loopback_redirect_uri_still_accepts_plain_loopback():
+    from litellm.proxy._experimental.mcp_server.oauth_utils import (
+        validate_loopback_redirect_uri,
+    )
+
+    validate_loopback_redirect_uri("http://127.0.0.1:3000/cb")
+    validate_loopback_redirect_uri("http://localhost:8080/callback")
+
+
 # ---------------------------------------------------------------------------
 # validate_trusted_redirect_uri — same-origin + loopback + env allowlist
 # ---------------------------------------------------------------------------

@@ -262,3 +262,19 @@ def test_drop_tool_level_extra_fields_strips_copilot_mcp_server_name():
         assert "copilot_mcp_server_name" not in tool
     assert result["tools"][0]["type"] == "function"
     assert result["tools"][1]["function"]["name"] == "read_file"
+
+
+@pytest.mark.parametrize(
+    ("api_base", "uses_models_path"),
+    [
+        ("https://my-endpoint.services.ai.azure.com", True),
+        ("https://my-endpoint.services.ai.azure.com.evil.example", False),
+        ("https://evil.example/services.ai.azure.com", False),
+    ],
+)
+def test_azure_ai_models_path_only_for_foundry_hosts(api_base, uses_models_path):
+    url = AzureAIStudioConfig().get_complete_url(
+        api_base=api_base, api_key="k", model="m", optional_params={}, litellm_params={}
+    )
+
+    assert ("/models/chat/completions" in url) is uses_models_path

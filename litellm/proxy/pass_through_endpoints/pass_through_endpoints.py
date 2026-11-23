@@ -41,6 +41,7 @@ from litellm.integrations.custom_logger import CustomLogger
 from litellm.litellm_core_utils.litellm_logging import Logging as LiteLLMLoggingObj
 from litellm.litellm_core_utils.logging_worker import GLOBAL_LOGGING_WORKER
 from litellm.litellm_core_utils.safe_json_dumps import safe_dumps
+from litellm.litellm_core_utils.url_utils import hostname_matches_domain
 from litellm.llms.base_llm.managed_resources.utils import (
     resolve_passthrough_managed_id_provider,
 )
@@ -340,10 +341,8 @@ class HttpPassThroughEndpointHelpers(BasePassthroughUtils):
             return EndpointType.VERTEX_AI
         elif parsed_url.hostname == "api.anthropic.com":
             return EndpointType.ANTHROPIC
-        elif (
-            parsed_url.hostname == "api.openai.com"
-            or parsed_url.hostname == "openai.azure.com"
-            or (parsed_url.hostname and "openai.com" in parsed_url.hostname)
+        elif parsed_url.hostname == "openai.azure.com" or (
+            parsed_url.hostname and hostname_matches_domain(parsed_url.hostname, ("openai.com",))
         ):
             return EndpointType.OPENAI
         return EndpointType.GENERIC
