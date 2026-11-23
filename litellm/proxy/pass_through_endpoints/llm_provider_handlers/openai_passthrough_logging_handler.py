@@ -16,6 +16,7 @@ from litellm.litellm_core_utils.litellm_logging import Logging as LiteLLMLogging
 from litellm.litellm_core_utils.litellm_logging import (
     get_standard_logging_object_payload,
 )
+from litellm.litellm_core_utils.url_utils import hostname_matches_domain
 from litellm.llms.openai.openai import OpenAIConfig
 from litellm.llms.openai.openai import OpenAIConfig as OpenAIConfigType
 from litellm.llms.openai.responses.transformation import OpenAIResponsesAPIConfig
@@ -26,11 +27,11 @@ from litellm.proxy.pass_through_endpoints.llm_provider_handlers.base_passthrough
 from litellm.proxy.pass_through_endpoints.success_handler import (
     PassThroughEndpointLogging,
 )
+from litellm.types.llms.openai import ResponsesAPIResponse
 from litellm.types.passthrough_endpoints.pass_through_endpoints import (
     EndpointType,
     PassthroughStandardLoggingPayload,
 )
-from litellm.types.llms.openai import ResponsesAPIResponse
 from litellm.types.utils import ImageResponse, LlmProviders, PassthroughCallTypes
 from litellm.utils import ModelResponse, TextCompletionResponse
 
@@ -53,15 +54,6 @@ _AZURE_OPENAI_HOSTNAMES = ("openai.azure.com", "cognitiveservices.azure.com")
 _AZURE_OPENAI_PATH_MARKERS = ("/openai/", "/v1/")
 
 
-def _hostname_matches(hostname: str, suffixes: tuple) -> bool:
-    """True if hostname equals one of `suffixes` or is a subdomain of it.
-
-    Uses suffix matching (not a bare substring test) so look-alikes such as
-    `cognitiveservices.azure.com.attacker.example` are not accepted.
-    """
-    return any(hostname == suffix or hostname.endswith("." + suffix) for suffix in suffixes)
-
-
 def _is_openai_compatible_host(hostname: Optional[str]) -> bool:
     """True if the hostname is OpenAI proper or one of the Azure OpenAI domains.
 
@@ -72,7 +64,9 @@ def _is_openai_compatible_host(hostname: Optional[str]) -> bool:
     """
     if not hostname:
         return False
-    return _hostname_matches(hostname, _OPENAI_HOSTNAMES) or _hostname_matches(hostname, _AZURE_OPENAI_HOSTNAMES)
+    return hostname_matches_domain(hostname, _OPENAI_HOSTNAMES) or hostname_matches_domain(
+        hostname, _AZURE_OPENAI_HOSTNAMES
+    )
 
 
 def _is_openai_compatible_url(url_route: Optional[str]) -> bool:
@@ -89,9 +83,9 @@ def _is_openai_compatible_url(url_route: Optional[str]) -> bool:
     hostname = parsed_url.hostname
     if not hostname:
         return False
-    if _hostname_matches(hostname, _OPENAI_HOSTNAMES):
+    if hostname_matches_domain(hostname, _OPENAI_HOSTNAMES):
         return True
-    if _hostname_matches(hostname, _AZURE_OPENAI_HOSTNAMES):
+    if hostname_matches_domain(hostname, _AZURE_OPENAI_HOSTNAMES):
         return any(marker in parsed_url.path for marker in _AZURE_OPENAI_PATH_MARKERS)
     return False
 

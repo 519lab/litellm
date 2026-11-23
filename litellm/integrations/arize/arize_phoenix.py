@@ -6,14 +6,14 @@ from typing import TYPE_CHECKING, Any, Optional, Tuple, Union
 from litellm._logging import verbose_logger
 from litellm.integrations.arize import _utils
 from litellm.integrations.arize._utils import ArizeOTELAttributes
+from litellm.litellm_core_utils.url_utils import url_host_matches_domain
 from litellm.types.integrations.arize_phoenix import ArizePhoenixConfig
 
 if TYPE_CHECKING:
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import SpanProcessor
     from opentelemetry.trace import Span as _Span
-    from opentelemetry.trace import SpanKind
-    from opentelemetry.trace import Tracer
+    from opentelemetry.trace import SpanKind, Tracer
 
     from litellm.integrations.opentelemetry import OpenTelemetry as _OpenTelemetry
     from litellm.integrations.opentelemetry import (
@@ -412,7 +412,7 @@ class ArizePhoenixLogger(OpenTelemetry):  # type: ignore
                 endpoint = collector_endpoint
                 protocol = "otlp_grpc"
             else:
-                if "app.phoenix.arize.com" in collector_endpoint:
+                if url_host_matches_domain(collector_endpoint, ("app.phoenix.arize.com",)):
                     endpoint = collector_endpoint
                     protocol = "otlp_http"
                 elif "/v1/traces" not in collector_endpoint:
@@ -435,7 +435,7 @@ class ArizePhoenixLogger(OpenTelemetry):  # type: ignore
         otlp_auth_headers = None
         if api_key is not None:
             otlp_auth_headers = f"Authorization=Bearer {api_key}"
-        elif "app.phoenix.arize.com" in endpoint:
+        elif url_host_matches_domain(endpoint, ("app.phoenix.arize.com",)):
             raise ValueError("PHOENIX_API_KEY must be set when using Phoenix Cloud (app.phoenix.arize.com).")
 
         project_name = os.environ.get("PHOENIX_PROJECT_NAME") or "default"
