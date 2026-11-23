@@ -10,6 +10,7 @@ release a version is based on is the `version` in `pyproject.toml`.
 ## [Unreleased]
 
 ### Fixed
+- `GET /credentials`, `PATCH /credentials/{name}` and `DELETE /credentials/{name}` return the error's status code when they fail. They returned the error object instead of raising it, so a failure such as updating a credential that does not exist came back as HTTP 200 with a 404 body, and clients, the dashboard included, saw it as success (CodeQL #585 #586 #587)
 - MCP REST tool listing and tool calls, A2A agent invocation (including its streaming path), the policy competitor-discovery stream and the blocked-words file validator return a fixed message or a fault category (`internal`, `timeout`, `unreachable`, ...) instead of the raw exception text. Upstream MCP and agent errors carried the server's admin-configured URL, which can be an internal address or hold a token in its query string, and reached any key holder with access to that server or agent; the details are still in the proxy logs (CodeQL `py/stack-trace-exposure` #579 #584 #590 #592 #593)
 
 ## [2.1.0] - 2026-11-22
