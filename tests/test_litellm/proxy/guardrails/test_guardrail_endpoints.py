@@ -2342,3 +2342,16 @@ def test_strict_guardrail_modes_flag_controls_raise_vs_warn(monkeypatch, caplog)
         )
     assert instance is not None
     assert any("not in the supported event hooks" in rec.message for rec in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_validate_blocked_words_file_generic_error_is_fixed_text(mocker):
+    from litellm.proxy.guardrails.guardrail_endpoints import validate_blocked_words_file
+
+    request = mocker.Mock()
+    request.get = mocker.Mock(side_effect=RuntimeError("secret-xyz"))
+    request.__getitem__ = mocker.Mock(side_effect=RuntimeError("secret-xyz"))
+
+    result = await validate_blocked_words_file(request)
+
+    assert result == {"valid": False, "error": "Validation error"}
